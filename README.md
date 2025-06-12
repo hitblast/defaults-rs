@@ -1,6 +1,9 @@
-# defaults-rs
+# <img src="https://raw.githubusercontent.com/github/explore/80688e429a7d4ef2fca1e82350fe8e3517d3494d/topics/rust/rust.png" width="40px"> defaults-rs
 
 A fast, async, and extensible Rust alternative to the macOS `defaults` CLI, with a Rust API for programmatic access to user and global preferences (plist files).
+
+> [!IMPORTANT]
+> Consider starring the project if you like it! It really supports and motivates me to make more projects like these.
 
 ---
 
