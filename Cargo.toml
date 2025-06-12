@@ -1,0 +1,15 @@
+[package]
+name = "defaults-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["HitBlast <hitblastlive@gmail.com>"]
+description = "macOS `defaults` CLI, written in Rust, along with an API binding"
+license = "MIT"
+repository = "https://github.com/yourusername/defaults-rs"
+keywords = ["macos", "defaults", "cli", "preferences", "plist"]
+categories = ["command-line-utilities", "api-bindings"]
+
+[dependencies]
+plist = "1.3"
+clap = "4.0"
+tokio = { version = "1.37", features = ["full"] }
