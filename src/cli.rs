@@ -95,7 +95,6 @@ fn type_arg() -> Arg {
         .long("type")
         .help("Type of value (int, float, bool, string)")
         .required(true)
-        .index(4)
         .value_parser(["int", "float", "bool", "string"])
 }
 
