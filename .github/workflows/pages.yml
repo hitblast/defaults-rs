@@ -41,6 +41,9 @@ jobs:
 
       - uses: actions/configure-pages@v5
 
+      - name: Build docs
+        run: cargo doc
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
