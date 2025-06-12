@@ -5,7 +5,9 @@ use defaults_rs::{Domain, PrefValue, ReadResult};
 #[tokio::main]
 async fn main() {
     let matches = Command::new("defaults-rs")
-        .about("A Rust alternative to the macOS `defaults` CLI")
+        .about(
+            "Command line interface to a user's defaults. Substitute for original `defaults` CLI.",
+        )
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(
