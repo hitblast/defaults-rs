@@ -59,9 +59,13 @@ impl Preferences {
                 PrefValue::Integer(i) => PlistValue::Integer((*i).into()),
                 PrefValue::Float(f) => PlistValue::Real(*f),
                 PrefValue::Boolean(b) => PlistValue::Boolean(*b),
-                PrefValue::Array(arr) => PlistValue::Array(arr.iter().map(to_plist_value).collect()),
+                PrefValue::Array(arr) => {
+                    PlistValue::Array(arr.iter().map(to_plist_value).collect())
+                }
                 PrefValue::Dictionary(dict) => PlistValue::Dictionary(
-                    dict.iter().map(|(k, v)| (k.clone(), to_plist_value(v))).collect()
+                    dict.iter()
+                        .map(|(k, v)| (k.clone(), to_plist_value(v)))
+                        .collect(),
                 ),
             }
         }
@@ -119,7 +123,8 @@ impl Preferences {
                 if let PlistValue::Dictionary(ref mut dict) = plist {
                     if dict.remove(k).is_some() {
                         let mut out_buf = Vec::new();
-                        plist.to_writer_xml(&mut out_buf)
+                        plist
+                            .to_writer_xml(&mut out_buf)
                             .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
                         let mut file = File::create(&path).await.map_err(PrefError::Io)?;
                         file.write_all(&out_buf).await.map_err(PrefError::Io)?;
@@ -179,7 +184,8 @@ impl Preferences {
             if let Some(val) = dict.remove(old_key) {
                 dict.insert(new_key.to_string(), val);
                 let mut out_buf = Vec::new();
-                plist.to_writer_xml(&mut out_buf)
+                plist
+                    .to_writer_xml(&mut out_buf)
                     .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
                 let mut file = File::create(&path).await.map_err(PrefError::Io)?;
                 file.write_all(&out_buf).await.map_err(PrefError::Io)?;
@@ -195,13 +201,17 @@ impl Preferences {
 
     pub async fn import(domain: Domain, import_path: &str) -> Result<(), PrefError> {
         let dest_path = Self::domain_path(&domain);
-        fs::copy(import_path, dest_path).await.map_err(PrefError::Io)?;
+        fs::copy(import_path, dest_path)
+            .await
+            .map_err(PrefError::Io)?;
         Ok(())
     }
 
     pub async fn export(domain: Domain, export_path: &str) -> Result<(), PrefError> {
         let src_path = Self::domain_path(&domain);
-        fs::copy(src_path, export_path).await.map_err(PrefError::Io)?;
+        fs::copy(src_path, export_path)
+            .await
+            .map_err(PrefError::Io)?;
         Ok(())
     }
 
@@ -249,7 +259,10 @@ impl Preferences {
     }
 
     fn quote_key(key: &str) -> String {
-        if key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if key
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             key.to_string()
         } else {
             format!("\"{}\"", key.replace('"', "\\\""))
@@ -257,7 +270,9 @@ impl Preferences {
     }
 
     fn quote_string(s: &str) -> String {
-        if s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if s.chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             s.to_string()
         } else {
             format!("\"{}\"", s.replace('"', "\\\""))
