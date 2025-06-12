@@ -3,7 +3,7 @@ name = "defaults-rs"
 version = "0.1.0"
 edition = "2024"
 authors = ["HitBlast <hitblastlive@gmail.com>"]
-description = "macOS `defaults` CLI, written in Rust, along with an API binding"
+description = "Near drop-in replacement macOS defaults CLI with a Rust-facing API binding"
 license = "MIT"
 repository = "https://github.com/hitblast/defaults-rs"
 keywords = ["macos", "defaults", "cli", "preferences", "plist"]
@@ -14,6 +14,9 @@ name = "drs"
 path = "src/main.rs"
 
 [dependencies]
-plist = "1.3"
-clap = "4.0"
-tokio = { version = "1.37", features = ["full"] }
+plist = "1.7"
+clap = "4.5"
+tokio = { version = "1.45", features = ["full"] }
+
+[workspace]
+members = [".", "xtask"]
