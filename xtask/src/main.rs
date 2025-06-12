@@ -13,7 +13,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Generate manpage for cutler
+    /// Generate manpage for defaults-rs
     Manpage {
         /// Output directory for the manpage
         #[arg(short, long, default_value = "man/man1")]
@@ -38,7 +38,7 @@ fn generate_manpage(dir: PathBuf) -> Result<()> {
     fs::create_dir_all(&dir).context("Failed to create output directory")?;
 
     // Generate the manpage
-    let file_path = dir.join("cutler.1");
+    let file_path = dir.join("drs.1");
     let mut file = File::create(&file_path).context("Failed to create manpage file")?;
 
     // Use the CLI definition from defaults-rs crate
