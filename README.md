@@ -58,7 +58,9 @@ drs read com.apple.dock tilesize
 #### Write a key
 
 ```sh
-drs write com.apple.dock tilesize --type int 48
+drs write com.apple.dock tilesize -i 48
+# or
+drs write com.apple.dock tilesize --int 48
 ```
 
 #### Delete a key
@@ -77,7 +79,7 @@ drs read com.apple.dock
 
 ```sh
 drs read -g com.apple.keyboard.fnState
-drs write -g InitialKeyRepeat --type int 25
+drs write -g InitialKeyRepeat --int 25
 ```
 
 #### Read the type of a key
