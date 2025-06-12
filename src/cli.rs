@@ -43,13 +43,13 @@ pub fn build_cli() -> Command {
                     Arg::new("old_key")
                         .help("Old key name")
                         .required(true)
-                        .index(3),
+                        .index(2),
                 )
                 .arg(
                     Arg::new("new_key")
                         .help("New key name")
                         .required(true)
-                        .index(4),
+                        .index(3),
                 ),
         )
         .subcommand(
