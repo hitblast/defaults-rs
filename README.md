@@ -75,6 +75,12 @@ drs delete com.apple.dock tilesize
 drs read com.apple.dock
 ```
 
+#### View all domains
+
+```sh
+drs domains
+```
+
 #### Use the global domain
 
 ```sh
