@@ -34,10 +34,11 @@ cargo install defaults-rs
 
 ### Manual Build & Install
 
+> [!NOTE] > `defaults-rs` requires Rust **(v1.70 or greater)** to be installed on your machine.
+> Also, builds are only possible on macOS.
+
 ```sh
-git clone https://github.com/hitblast/defaults-rs.git
-cd defaults-rs
-cargo install --path .
+cargo install --git https://github.com/hitblast/defaults-rs
 ```
 
 ---
