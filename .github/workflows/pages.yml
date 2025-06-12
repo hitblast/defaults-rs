@@ -41,12 +41,18 @@ jobs:
 
       - uses: actions/configure-pages@v5
 
-      - name: Build docs
+      - name: Copy docs to /docs folder
         run: |
-          cargo doc --no-deps
-          rm -rf ./docs
-          echo "<meta http-equiv=\"refresh\" content=\"0; url=defaults_rs/index.html\">" > target/doc/index.html
-          cp -r target/doc ./docs
+          # Build
+          cargo doc --no-deps --package defaults-rs
+
+          # Move
+          rm -rf docs
+          mkdir -p docs
+          cp -r target/doc/* docs/
+
+          # Redirect root index to crate doc
+          echo '<meta http-equiv="refresh" content="0; url=defaults_rs/index.html">' > docs/index.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
