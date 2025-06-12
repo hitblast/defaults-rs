@@ -42,7 +42,7 @@ jobs:
       - uses: actions/configure-pages@v5
 
       - name: Build docs
-        run: cargo doc
+        run: cargo doc --no-deps
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
