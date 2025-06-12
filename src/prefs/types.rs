@@ -1,7 +1,6 @@
-/// Types for preferences domains and values.
 use std::collections::HashMap;
 
-/// Represents a preferences domain (user or global).
+/// Preferences domain (user or global).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Domain {
     /// A user domain, e.g., "com.apple.finder"
@@ -10,8 +9,7 @@ pub enum Domain {
     Global,
 }
 
-/// Represents a value stored in preferences.
-/// This is a simplified version; expand as needed.
+/// Value stored in preferences.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PrefValue {
     String(String),
@@ -20,5 +18,10 @@ pub enum PrefValue {
     Boolean(bool),
     Array(Vec<PrefValue>),
     Dictionary(HashMap<String, PrefValue>),
-    // Add more types as needed
+}
+
+/// Result of a read operation: either a single value or a whole plist.
+pub enum ReadResult {
+    Value(PrefValue),
+    Plist(plist::Value),
 }

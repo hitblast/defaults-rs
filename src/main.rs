@@ -1,12 +1,6 @@
-/// defaults-rs: A Rust alternative to the macOS `defaults` CLI, with a Rust API.
-///
-/// This binary provides a command-line interface for reading, writing, and deleting
-/// macOS user and global preferences (plist files).
-///
-/// See the library for API usage.
 use clap::{Arg, ArgAction, Command};
 use defaults_rs::preferences::Preferences;
-use defaults_rs::{Domain, PrefValue};
+use defaults_rs::{Domain, PrefValue, ReadResult};
 
 #[tokio::main]
 async fn main() {
@@ -26,8 +20,8 @@ async fn main() {
                 )
                 .arg(
                     Arg::new("domain")
-                        .help("Domain (e.g. com.apple.dock)")
-                        .required_unless_present("global")
+                        .help("Domain (e.g. com.apple.dock, or any value if using -g for global)")
+                        .required(true)
                         .index(1),
                 )
                 .arg(Arg::new("key").help("Preference key").index(2)),
@@ -44,8 +38,8 @@ async fn main() {
                 )
                 .arg(
                     Arg::new("domain")
-                        .help("Domain (e.g. com.apple.dock)")
-                        .required_unless_present("global")
+                        .help("Domain (e.g. com.apple.dock, or any value if using -g for global)")
+                        .required(true)
                         .index(1),
                 )
                 .arg(
@@ -55,16 +49,18 @@ async fn main() {
                         .index(2),
                 )
                 .arg(
-                    Arg::new("type_flag")
-                        .help("Type flag (e.g. -int, -bool, -string)")
+                    Arg::new("value")
+                        .help("Value to write")
                         .required(true)
                         .index(3),
                 )
                 .arg(
-                    Arg::new("value")
-                        .help("Value to write")
+                    Arg::new("type")
+                        .short('t')
+                        .long("type")
+                        .help("Type of value (int, float, bool, string)")
                         .required(true)
-                        .index(4),
+                        .value_parser(["int", "float", "bool", "string"]),
                 ),
         )
         .subcommand(
@@ -195,7 +191,13 @@ async fn main() {
             };
             let key = sub_m.get_one::<String>("key").map(|s| s.as_str());
             match Preferences::read(domain, key).await {
-                Ok(val) => println!("{val:?}"),
+                Ok(ReadResult::Plist(plist_val)) => {
+                    Preferences::print_apple_style(&plist_val, 0);
+                    println!();
+                }
+                Ok(ReadResult::Value(val)) => {
+                    println!("{val:?}");
+                }
                 Err(e) => eprintln!("Error: {e}"),
             }
         }
@@ -208,7 +210,7 @@ async fn main() {
             };
             let key = sub_m.get_one::<String>("key").expect("key required");
             match Preferences::read(domain, Some(key)).await {
-                Ok(val) => {
+                Ok(ReadResult::Value(val)) => {
                     let type_str = match val {
                         PrefValue::String(_) => "string",
                         PrefValue::Integer(_) => "integer",
@@ -218,6 +220,9 @@ async fn main() {
                         PrefValue::Dictionary(_) => "dictionary",
                     };
                     println!("{type_str}");
+                }
+                Ok(ReadResult::Plist(_)) => {
+                    eprintln!("Error: read-type expects a key, not a whole domain");
                 }
                 Err(e) => eprintln!("Error: {e}"),
             }
@@ -230,27 +235,25 @@ async fn main() {
                 Domain::User(dom.to_string())
             };
             let key = sub_m.get_one::<String>("key").expect("key required");
-            let type_flag = sub_m
-                .get_one::<String>("type_flag")
-                .expect("type flag required");
             let value_str = sub_m.get_one::<String>("value").expect("value required");
+            let type_flag = sub_m.get_one::<String>("type").expect("type required");
 
             let value = match type_flag.as_str() {
-                "-int" => value_str
+                "int" => value_str
                     .parse::<i64>()
                     .map(PrefValue::Integer)
                     .unwrap_or_else(|_| {
                         eprintln!("Invalid integer value");
                         std::process::exit(1)
                     }),
-                "-float" => value_str
+                "float" => value_str
                     .parse::<f64>()
                     .map(PrefValue::Float)
                     .unwrap_or_else(|_| {
                         eprintln!("Invalid float value");
                         std::process::exit(1)
                     }),
-                "-bool" => match value_str.as_str() {
+                "bool" => match value_str.as_str() {
                     "true" | "1" => PrefValue::Boolean(true),
                     "false" | "0" => PrefValue::Boolean(false),
                     _ => {
@@ -258,9 +261,9 @@ async fn main() {
                         std::process::exit(1)
                     }
                 },
-                "-string" => PrefValue::String(value_str.to_string()),
+                "string" => PrefValue::String(value_str.to_string()),
                 _ => {
-                    eprintln!("Unsupported type flag: {type_flag}");
+                    eprintln!("Unsupported type: {type_flag}");
                     std::process::exit(1)
                 }
             };

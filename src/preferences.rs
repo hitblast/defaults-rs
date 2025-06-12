@@ -1,22 +1,23 @@
 use crate::prefs::error::PrefError;
-use crate::prefs::types::{Domain, PrefValue};
+use crate::prefs::types::{Domain, PrefValue, ReadResult};
 use plist::Value as PlistValue;
+use std::io::Cursor;
 use std::path::PathBuf;
 use tokio::fs::{self, File};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-/// Main struct for interacting with preferences.
 pub struct Preferences;
 
 impl Preferences {
     /// Read a value from the given domain and key.
-    /// If `key` is None, returns the entire domain as a dictionary.
-    pub async fn read(domain: Domain, key: Option<&str>) -> Result<PrefValue, PrefError> {
+    /// If `key` is None, returns the entire domain as a plist::Value.
+    pub async fn read(domain: Domain, key: Option<&str>) -> Result<ReadResult, PrefError> {
         let path = Self::domain_path(&domain);
         let mut file = File::open(&path).await.map_err(PrefError::Io)?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-        let plist = PlistValue::from_reader_xml(&buf[..])
+        let plist = PlistValue::from_reader_xml(Cursor::new(&buf[..]))
+            .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
             .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
 
         fn convert(val: &PlistValue) -> PrefValue {
@@ -29,7 +30,7 @@ impl Preferences {
                 PlistValue::Dictionary(dict) => PrefValue::Dictionary(
                     dict.iter().map(|(k, v)| (k.clone(), convert(v))).collect(),
                 ),
-                _ => PrefValue::String(format!("{:?}", val)), // fallback for unsupported types
+                _ => PrefValue::String(format!("{:?}", val)),
             }
         }
 
@@ -37,14 +38,14 @@ impl Preferences {
             Some(k) => {
                 if let PlistValue::Dictionary(dict) = &plist {
                     match dict.get(k) {
-                        Some(val) => Ok(convert(val)),
+                        Some(val) => Ok(ReadResult::Value(convert(val))),
                         None => Err(PrefError::KeyNotFound),
                     }
                 } else {
                     Err(PrefError::InvalidType)
                 }
             }
-            None => Ok(convert(&plist)),
+            None => Ok(ReadResult::Plist(plist)),
         }
     }
 
@@ -58,23 +59,19 @@ impl Preferences {
                 PrefValue::Integer(i) => PlistValue::Integer((*i).into()),
                 PrefValue::Float(f) => PlistValue::Real(*f),
                 PrefValue::Boolean(b) => PlistValue::Boolean(*b),
-                PrefValue::Array(arr) => {
-                    PlistValue::Array(arr.iter().map(to_plist_value).collect())
-                }
+                PrefValue::Array(arr) => PlistValue::Array(arr.iter().map(to_plist_value).collect()),
                 PrefValue::Dictionary(dict) => PlistValue::Dictionary(
-                    dict.iter()
-                        .map(|(k, v)| (k.clone(), to_plist_value(v)))
-                        .collect(),
+                    dict.iter().map(|(k, v)| (k.clone(), to_plist_value(v))).collect()
                 ),
             }
         }
 
-        // Load existing plist or create a new dictionary
         let mut root = if fs::metadata(&path).await.is_ok() {
             let mut file = File::open(&path).await.map_err(PrefError::Io)?;
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-            PlistValue::from_reader_xml(&buf[..])
+            PlistValue::from_reader_xml(Cursor::new(&buf[..]))
+                .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
                 .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?
         } else {
             PlistValue::Dictionary(plist::Dictionary::new())
@@ -115,14 +112,14 @@ impl Preferences {
                 let mut file = File::open(&path).await.map_err(PrefError::Io)?;
                 let mut buf = Vec::new();
                 file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-                let mut plist = PlistValue::from_reader_xml(&buf[..])
+                let mut plist = PlistValue::from_reader_xml(Cursor::new(&buf[..]))
+                    .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
                     .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
 
                 if let PlistValue::Dictionary(ref mut dict) = plist {
                     if dict.remove(k).is_some() {
                         let mut out_buf = Vec::new();
-                        plist
-                            .to_writer_xml(&mut out_buf)
+                        plist.to_writer_xml(&mut out_buf)
                             .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
                         let mut file = File::create(&path).await.map_err(PrefError::Io)?;
                         file.write_all(&out_buf).await.map_err(PrefError::Io)?;
@@ -138,13 +135,13 @@ impl Preferences {
         }
     }
 
-    /// Read the type of a key in the given domain.
     pub async fn read_type(domain: Domain, key: &str) -> Result<String, PrefError> {
         let path = Self::domain_path(&domain);
         let mut file = File::open(&path).await.map_err(PrefError::Io)?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-        let plist = PlistValue::from_reader_xml(&buf[..])
+        let plist = PlistValue::from_reader_xml(Cursor::new(&buf[..]))
+            .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
             .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
 
         if let PlistValue::Dictionary(dict) = &plist {
@@ -166,7 +163,6 @@ impl Preferences {
         }
     }
 
-    /// Rename a key in the given domain.
     pub async fn rename(domain: Domain, old_key: &str, new_key: &str) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
         if fs::metadata(&path).await.is_err() {
@@ -175,15 +171,15 @@ impl Preferences {
         let mut file = File::open(&path).await.map_err(PrefError::Io)?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-        let mut plist = PlistValue::from_reader_xml(&buf[..])
+        let mut plist = PlistValue::from_reader_xml(Cursor::new(&buf[..]))
+            .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
             .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
 
         if let PlistValue::Dictionary(ref mut dict) = plist {
             if let Some(val) = dict.remove(old_key) {
                 dict.insert(new_key.to_string(), val);
                 let mut out_buf = Vec::new();
-                plist
-                    .to_writer_xml(&mut out_buf)
+                plist.to_writer_xml(&mut out_buf)
                     .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
                 let mut file = File::create(&path).await.map_err(PrefError::Io)?;
                 file.write_all(&out_buf).await.map_err(PrefError::Io)?;
@@ -197,25 +193,18 @@ impl Preferences {
         }
     }
 
-    /// Import a plist file into the given domain.
     pub async fn import(domain: Domain, import_path: &str) -> Result<(), PrefError> {
         let dest_path = Self::domain_path(&domain);
-        fs::copy(import_path, dest_path)
-            .await
-            .map_err(PrefError::Io)?;
+        fs::copy(import_path, dest_path).await.map_err(PrefError::Io)?;
         Ok(())
     }
 
-    /// Export a domain to a plist file.
     pub async fn export(domain: Domain, export_path: &str) -> Result<(), PrefError> {
         let src_path = Self::domain_path(&domain);
-        fs::copy(src_path, export_path)
-            .await
-            .map_err(PrefError::Io)?;
+        fs::copy(src_path, export_path).await.map_err(PrefError::Io)?;
         Ok(())
     }
 
-    /// Resolve the file path for a given domain.
     pub(crate) fn domain_path(domain: &Domain) -> PathBuf {
         let home = std::env::var("HOME").expect("HOME environment variable not set");
         match domain {
@@ -226,6 +215,52 @@ impl Preferences {
             Domain::User(name) => {
                 PathBuf::from(format!("{}/Library/Preferences/{}.plist", home, name))
             }
+        }
+    }
+
+    /// Pretty-print a PlistValue in Apple-style format (for CLI).
+    pub fn print_apple_style(val: &plist::Value, indent: usize) {
+        let ind = |n| "    ".repeat(n);
+        match val {
+            plist::Value::Dictionary(dict) => {
+                println!("{{");
+                for (k, v) in dict {
+                    print!("{}{} = ", ind(indent + 1), Self::quote_key(k));
+                    Self::print_apple_style(v, indent + 1);
+                    println!(";");
+                }
+                print!("{}}}", ind(indent));
+            }
+            plist::Value::Array(arr) => {
+                println!("(");
+                for v in arr {
+                    print!("{}", ind(indent + 1));
+                    Self::print_apple_style(v, indent + 1);
+                    println!(",");
+                }
+                print!("{})", ind(indent));
+            }
+            plist::Value::String(s) => print!("{}", Self::quote_string(s)),
+            plist::Value::Integer(i) => print!("{}", i),
+            plist::Value::Real(f) => print!("{}", f),
+            plist::Value::Boolean(b) => print!("{}", if *b { "1" } else { "0" }),
+            _ => print!("{:?}", val),
+        }
+    }
+
+    fn quote_key(key: &str) -> String {
+        if key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            key.to_string()
+        } else {
+            format!("\"{}\"", key.replace('"', "\\\""))
+        }
+    }
+
+    fn quote_string(s: &str) -> String {
+        if s.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            s.to_string()
+        } else {
+            format!("\"{}\"", s.replace('"', "\\\""))
         }
     }
 }

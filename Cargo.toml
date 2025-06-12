@@ -1,13 +1,17 @@
 [package]
 name = "defaults-rs"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["HitBlast <hitblastlive@gmail.com>"]
 description = "macOS `defaults` CLI, written in Rust, along with an API binding"
 license = "MIT"
-repository = "https://github.com/yourusername/defaults-rs"
+repository = "https://github.com/hitblast/defaults-rs"
 keywords = ["macos", "defaults", "cli", "preferences", "plist"]
 categories = ["command-line-utilities", "api-bindings"]
+
+[[bin]]
+name = "drs"
+path = "src/main.rs"
 
 [dependencies]
 plist = "1.3"
