@@ -75,8 +75,8 @@ async fn main() {
                 )
                 .arg(
                     Arg::new("domain")
-                        .help("Domain (e.g. com.apple.dock)")
-                        .required_unless_present("global")
+                        .help("Domain (e.g. com.apple.dock, or any value if using -g for global)")
+                        .required(true)
                         .index(1),
                 )
                 .arg(Arg::new("key").help("Preference key").index(2)),
@@ -93,8 +93,8 @@ async fn main() {
                 )
                 .arg(
                     Arg::new("domain")
-                        .help("Domain (e.g. com.apple.dock)")
-                        .required_unless_present("global")
+                        .help("Domain (e.g. com.apple.dock, or any value if using -g for global)")
+                        .required(true)
                         .index(1),
                 )
                 .arg(
@@ -116,8 +116,8 @@ async fn main() {
                 )
                 .arg(
                     Arg::new("domain")
-                        .help("Domain (e.g. com.apple.dock)")
-                        .required_unless_present("global")
+                        .help("Domain (e.g. com.apple.dock, or any value if using -g for global)")
+                        .required(true)
                         .index(1),
                 )
                 .arg(
@@ -145,8 +145,8 @@ async fn main() {
                 )
                 .arg(
                     Arg::new("domain")
-                        .help("Domain (e.g. com.apple.dock)")
-                        .required_unless_present("global")
+                        .help("Domain (e.g. com.apple.dock, or any value if using -g for global)")
+                        .required(true)
                         .index(1),
                 )
                 .arg(
@@ -168,8 +168,8 @@ async fn main() {
                 )
                 .arg(
                     Arg::new("domain")
-                        .help("Domain (e.g. com.apple.dock)")
-                        .required_unless_present("global")
+                        .help("Domain (e.g. com.apple.dock, or any value if using -g for global)")
+                        .required(true)
                         .index(1),
                 )
                 .arg(
