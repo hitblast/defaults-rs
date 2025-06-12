@@ -26,8 +26,42 @@ pub fn build_cli() -> Command {
                 .about("Write a value to preferences")
                 .arg(domain_arg())
                 .arg(key_arg(true))
-                .arg(value_arg())
-                .arg(type_arg()),
+                .arg(
+                    Arg::new("int")
+                        .help("Write an integer value")
+                        .short('i')
+                        .long("int")
+                        .num_args(1)
+                        .value_name("VALUE")
+                        .conflicts_with_all(&["float", "bool", "string"]),
+                )
+                .arg(
+                    Arg::new("float")
+                        .help("Write a float value")
+                        .short('f')
+                        .long("float")
+                        .num_args(1)
+                        .value_name("VALUE")
+                        .conflicts_with_all(&["int", "bool", "string"]),
+                )
+                .arg(
+                    Arg::new("bool")
+                        .help("Write a boolean value (true/false/1/0)")
+                        .short('b')
+                        .long("bool")
+                        .num_args(1)
+                        .value_name("VALUE")
+                        .conflicts_with_all(&["int", "float", "string"]),
+                )
+                .arg(
+                    Arg::new("string")
+                        .help("Write a string value")
+                        .short('s')
+                        .long("string")
+                        .num_args(1)
+                        .value_name("VALUE")
+                        .conflicts_with_all(&["int", "float", "bool"]),
+                ),
         )
         .subcommand(
             Command::new("delete")
@@ -64,6 +98,7 @@ pub fn build_cli() -> Command {
                 .arg(domain_arg())
                 .arg(path_arg()),
         )
+        .subcommand(Command::new("domains").about("List all available preference domains"))
 }
 
 fn domain_arg() -> Arg {
@@ -80,22 +115,6 @@ fn key_arg(required: bool) -> Arg {
         arg = arg.required(true);
     }
     arg
-}
-
-fn value_arg() -> Arg {
-    Arg::new("value")
-        .help("Value to write")
-        .required(true)
-        .index(3)
-}
-
-fn type_arg() -> Arg {
-    Arg::new("type")
-        .short('t')
-        .long("type")
-        .help("Type of value (int, float, bool, string)")
-        .required(true)
-        .value_parser(["int", "float", "bool", "string"])
 }
 
 fn path_arg() -> Arg {

@@ -1,3 +1,5 @@
+//! The API side of defaults-rs.
+
 use crate::prefs::error::PrefError;
 use crate::prefs::types::{Domain, PrefValue, ReadResult};
 use plist::Value as PlistValue;
@@ -6,11 +8,27 @@ use std::path::PathBuf;
 use tokio::fs::{self, File};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+/// Provides asynchronous operations for reading, writing, deleting, and managing
+/// macOS plist preference files in user or global domains.
 pub struct Preferences;
 
 impl Preferences {
     /// Read a value from the given domain and key.
-    /// If `key` is None, returns the entire domain as a plist::Value.
+    ///
+    /// If `key` is `None`, returns the entire domain as a `plist::Value`.
+    /// If `key` is provided, returns the value at that key as a `PrefValue`.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to read from (global or user).
+    /// * `key` - The key to read, or `None` to read the entire domain.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PrefError::Io` if the file cannot be read,
+    /// `PrefError::Other` if the plist cannot be parsed,
+    /// `PrefError::KeyNotFound` if the key does not exist,
+    /// or `PrefError::InvalidType` if the plist is not a dictionary.
     pub async fn read(domain: Domain, key: Option<&str>) -> Result<ReadResult, PrefError> {
         let path = Self::domain_path(&domain);
         let mut file = File::open(&path).await.map_err(PrefError::Io)?;
@@ -50,6 +68,21 @@ impl Preferences {
     }
 
     /// Write a value to the given domain and key.
+    ///
+    /// If the domain file does not exist, it will be created.
+    /// If the key already exists, its value will be overwritten.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to write to (global or user).
+    /// * `key` - The key to write.
+    /// * `value` - The value to write.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PrefError::Io` if the file cannot be read or written,
+    /// `PrefError::Other` if the plist cannot be parsed or written,
+    /// or `PrefError::InvalidType` if the root plist is not a dictionary.
     pub async fn write(domain: Domain, key: &str, value: PrefValue) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
 
@@ -98,7 +131,21 @@ impl Preferences {
     }
 
     /// Delete a key from the given domain.
-    /// If `key` is None, deletes the entire domain file.
+    ///
+    /// If `key` is `None`, deletes the entire domain file.
+    /// If `key` is provided, removes the key from the domain plist.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to delete from (global or user).
+    /// * `key` - The key to delete, or `None` to delete the entire domain file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PrefError::Io` if the file cannot be read or written,
+    /// `PrefError::Other` if the plist cannot be parsed or written,
+    /// `PrefError::KeyNotFound` if the key or file does not exist,
+    /// or `PrefError::InvalidType` if the root plist is not a dictionary.
     pub async fn delete(domain: Domain, key: Option<&str>) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
 
@@ -140,6 +187,21 @@ impl Preferences {
         }
     }
 
+    /// Read the type of a value at the given key in the specified domain.
+    ///
+    /// Returns a string describing the type: "string", "integer", "float", "boolean", "array", "dictionary", or "unknown".
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to read from.
+    /// * `key` - The key whose type to check.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PrefError::Io` if the file cannot be read,
+    /// `PrefError::Other` if the plist cannot be parsed,
+    /// `PrefError::KeyNotFound` if the key does not exist,
+    /// or `PrefError::InvalidType` if the root plist is not a dictionary.
     pub async fn read_type(domain: Domain, key: &str) -> Result<String, PrefError> {
         let path = Self::domain_path(&domain);
         let mut file = File::open(&path).await.map_err(PrefError::Io)?;
@@ -168,6 +230,22 @@ impl Preferences {
         }
     }
 
+    /// Rename a key in the given domain.
+    ///
+    /// Moves the value from `old_key` to `new_key` within the domain plist.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to operate on.
+    /// * `old_key` - The existing key to rename.
+    /// * `new_key` - The new key name.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PrefError::Io` if the file cannot be read or written,
+    /// `PrefError::Other` if the plist cannot be parsed or written,
+    /// `PrefError::KeyNotFound` if the old key does not exist,
+    /// or `PrefError::InvalidType` if the root plist is not a dictionary.
     pub async fn rename(domain: Domain, old_key: &str, new_key: &str) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
         if fs::metadata(&path).await.is_err() {
@@ -199,6 +277,18 @@ impl Preferences {
         }
     }
 
+    /// Import a plist file into the specified domain.
+    ///
+    /// Copies the file at `import_path` to the domain's plist location, replacing any existing file.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to import into.
+    /// * `import_path` - The path to the source plist file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PrefError::Io` if the file cannot be copied.
     pub async fn import(domain: Domain, import_path: &str) -> Result<(), PrefError> {
         let dest_path = Self::domain_path(&domain);
         fs::copy(import_path, dest_path)
@@ -207,6 +297,18 @@ impl Preferences {
         Ok(())
     }
 
+    /// Export a domain's plist file to the specified path.
+    ///
+    /// Copies the domain's plist file to `export_path`.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to export.
+    /// * `export_path` - The destination path for the exported plist file.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PrefError::Io` if the file cannot be copied.
     pub async fn export(domain: Domain, export_path: &str) -> Result<(), PrefError> {
         let src_path = Self::domain_path(&domain);
         fs::copy(src_path, export_path)
@@ -215,6 +317,19 @@ impl Preferences {
         Ok(())
     }
 
+    /// Get the filesystem path for a given domain.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to get the path for.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `PathBuf` pointing to the domain's plist file.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `HOME` environment variable is not set.
     pub(crate) fn domain_path(domain: &Domain) -> PathBuf {
         let home = std::env::var("HOME").expect("HOME environment variable not set");
         match domain {
@@ -228,7 +343,12 @@ impl Preferences {
         }
     }
 
-    /// Pretty-print a PlistValue in Apple-style format (for CLI).
+    /// Pretty-print a `PlistValue` in Apple-style format (for CLI).
+    ///
+    /// # Arguments
+    ///
+    /// * `val` - The plist value to print.
+    /// * `indent` - The indentation level (number of indents).
     pub fn print_apple_style(val: &plist::Value, indent: usize) {
         let ind = |n| "    ".repeat(n);
         match val {
@@ -258,6 +378,51 @@ impl Preferences {
         }
     }
 
+    /// List all available domains in `~/Library/Preferences`.
+    ///
+    /// Returns a sorted vector of domain names, with "NSGlobalDomain" for the global domain.
+    ///
+    /// # Errors
+    ///
+    /// Returns `PrefError::Io` if the directory cannot be read,
+    /// or `PrefError::Other` if the `HOME` environment variable is not set.
+    pub async fn list_domains() -> Result<Vec<String>, PrefError> {
+        let home =
+            std::env::var("HOME").map_err(|e| PrefError::Other(format!("HOME env error: {e}")))?;
+        let prefs_dir = PathBuf::from(format!("{}/Library/Preferences", home));
+        let mut entries = match fs::read_dir(&prefs_dir).await {
+            Ok(rd) => rd,
+            Err(e) => return Err(PrefError::Io(e)),
+        };
+
+        let mut domains = Vec::new();
+        while let Some(entry) = entries.next_entry().await.map_err(PrefError::Io)? {
+            let path = entry.path();
+            if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
+                if fname == ".GlobalPreferences.plist" {
+                    domains.push("NSGlobalDomain".to_string());
+                } else if fname.ends_with(".plist") && !fname.starts_with('.') {
+                    let dom = fname.trim_end_matches(".plist").to_string();
+                    domains.push(dom);
+                }
+            }
+        }
+        domains.sort();
+        Ok(domains)
+    }
+
+    /// Quote a key for Apple-style plist output if necessary.
+    ///
+    /// Keys containing only alphanumeric characters, '-' or '_' are not quoted.
+    /// Otherwise, the key is quoted and internal quotes are escaped.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to quote.
+    ///
+    /// # Returns
+    ///
+    /// Returns the quoted or unquoted key as a `String`.
     fn quote_key(key: &str) -> String {
         if key
             .chars()
@@ -269,6 +434,18 @@ impl Preferences {
         }
     }
 
+    /// Quote a string for Apple-style plist output if necessary.
+    ///
+    /// Strings containing only alphanumeric characters, '-' or '_' are not quoted.
+    /// Otherwise, the string is quoted and internal quotes are escaped.
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - The string to quote.
+    ///
+    /// # Returns
+    ///
+    /// Returns the quoted or unquoted string as a `String`.
     fn quote_string(s: &str) -> String {
         if s.chars()
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
