@@ -42,12 +42,16 @@ jobs:
       - uses: actions/configure-pages@v5
 
       - name: Build docs
-        run: cargo doc --no-deps
+        run: |
+          cargo doc --no-deps
+          rm -rf ./docs
+          echo "<meta http-equiv=\"refresh\" content=\"0; url=build_wheel\">" > target/doc/index.html
+          cp -r target/doc ./docs
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "target/doc"
+          path: "docs"
 
       - name: Deploy to GitHub Pages
         id: deployment
