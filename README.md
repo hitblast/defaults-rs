@@ -117,6 +117,8 @@ To access the developer-side API for `defaults-rs`, run the following command an
 cargo add defaults-rs
 ```
 
+Please refer to the [API reference](https://hitblast.github.io/defaults-rs) for more information about all the available functions.
+
 ### Example
 
 ```rust
