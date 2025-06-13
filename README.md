@@ -7,6 +7,16 @@ Near drop-in replacement for the macOS `defaults` CLI with API bindings for Rust
 
 ---
 
+## Table of Contents
+
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [CLI Usage](#cli-usage)
+- [Rust API](#rust-api)
+- [License](#license)
+
+---
+
 ## Key Features
 
 - **CLI (`drs`)**: Use it as a direct replacement for `defaults` without hassle.
@@ -128,18 +138,54 @@ Please refer to the [API reference](https://hitblast.github.io/defaults-rs) for 
 ### Example
 
 ```rust
-use defaults_rs::{Preferences, Domain, PrefValue};
+use defaults_rs::{Domain, PrefValue, Preferences};
 
 #[tokio::main]
 async fn main() {
     // Read a value
-    let value = Preferences::read(Domain::User("com.apple.dock".into()), Some("tilesize")).await.unwrap();
+    let value = Preferences::read(Domain::User("com.apple.dock".into()), Some("tilesize"))
+        .await
+        .unwrap();
 
     // Write a value
-    Preferences::write(Domain::User("com.apple.dock".into()), "tilesize", PrefValue::Integer(48)).await.unwrap();
+    Preferences::write(
+        Domain::User("com.apple.dock".into()),
+        "tilesize",
+        PrefValue::Integer(48),
+    )
+    .await
+    .unwrap();
 
     // Delete a key
-    Preferences::delete(Domain::User("com.apple.dock".into()), Some("tilesize")).await.unwrap();
+    Preferences::delete(Domain::User("com.apple.dock".into()), Some("tilesize"))
+        .await
+        .unwrap();
+}
+```
+
+For writing domains in batches, you can use the batch-write function:
+
+```rust
+use defaults_rs::{Domain, PrefValue, Preferences};
+
+#[tokio::main]
+async fn main() {
+    let batch = vec![
+        (
+            Domain::User("com.apple.dock".into()),
+            vec![
+                ("tilesize".into(), PrefValue::Integer(48)),
+                ("autohide".into(), PrefValue::Boolean(true)),
+            ],
+        ),
+        (
+            Domain::User("com.apple.keyboard".into()),
+            vec![
+                ("InitialKeyRepeat".into(), PrefValue::Integer(25)),
+            ],
+        ),
+    ];
+    Preferences::write_batch(batch).await.unwrap();
 }
 ```
 
