@@ -99,6 +99,16 @@ pub fn build_cli() -> Command {
                 .arg(path_arg()),
         )
         .subcommand(Command::new("domains").about("List all available preference domains"))
+        .subcommand(
+            Command::new("find")
+                .about("List all entries in all domains containing word")
+                .arg(
+                    Arg::new("word")
+                        .help("Word to search for (case-insensitive)")
+                        .required(true)
+                        .index(1),
+                ),
+        )
 }
 
 fn domain_arg() -> Arg {

@@ -12,7 +12,100 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 /// macOS plist preference files in user or global domains.
 pub struct Preferences;
 
+/// Result of a find operation.
+pub struct FindMatch {
+    pub key_path: String,
+    pub value: String,
+}
+
 impl Preferences {
+    /// Search all domains for keys or values containing the given word (case-insensitive).
+    ///
+    /// Returns a map from domain name to a vector of FindMatch.
+    pub async fn find(
+        word: &str,
+    ) -> Result<std::collections::BTreeMap<String, Vec<FindMatch>>, PrefError> {
+        use std::collections::BTreeMap;
+        let word_lower = word.to_lowercase();
+        let mut results: BTreeMap<String, Vec<FindMatch>> = BTreeMap::new();
+        let domains = Self::list_domains().await?;
+        for domain_name in domains {
+            let domain = if domain_name == "NSGlobalDomain" {
+                Domain::Global
+            } else {
+                Domain::User(domain_name.clone())
+            };
+            let plist = match Self::read(domain, None).await {
+                Ok(ReadResult::Plist(plist)) => plist,
+                _ => continue,
+            };
+            let mut matches = Vec::new();
+            Self::find_in_value(&plist, &word_lower, String::new(), &mut matches);
+            if !matches.is_empty() {
+                results.insert(domain_name, matches);
+            }
+        }
+        Ok(results)
+    }
+
+    fn find_in_value(
+        val: &plist::Value,
+        word_lower: &str,
+        key_path: String,
+        matches: &mut Vec<FindMatch>,
+    ) {
+        // Helper to check if a string contains the word (case-insensitive)
+        fn contains_word(haystack: &str, needle: &str) -> bool {
+            haystack.to_lowercase().contains(needle)
+        }
+
+        match val {
+            plist::Value::Dictionary(dict) => {
+                for (k, v) in dict {
+                    let new_key_path = if key_path.is_empty() {
+                        k.clone()
+                    } else {
+                        format!("{}.{}", key_path, k)
+                    };
+                    // Check key match
+                    if contains_word(k, word_lower) {
+                        matches.push(FindMatch {
+                            key_path: new_key_path.clone(),
+                            value: Self::plist_value_to_string(v),
+                        });
+                    }
+                    // Recurse
+                    Self::find_in_value(v, word_lower, new_key_path, matches);
+                }
+            }
+            plist::Value::Array(arr) => {
+                for (i, v) in arr.iter().enumerate() {
+                    let new_key_path = format!("{}[{}]", key_path, i);
+                    Self::find_in_value(v, word_lower, new_key_path, matches);
+                }
+            }
+            _ => {
+                let val_str = Self::plist_value_to_string(val);
+                if contains_word(&val_str, word_lower) {
+                    matches.push(FindMatch {
+                        key_path,
+                        value: val_str,
+                    });
+                }
+            }
+        }
+    }
+
+    fn plist_value_to_string(val: &plist::Value) -> String {
+        match val {
+            plist::Value::String(s) => format!("{:?}", s),
+            plist::Value::Integer(i) => i.to_string(),
+            plist::Value::Real(f) => f.to_string(),
+            plist::Value::Boolean(b) => b.to_string(),
+            plist::Value::Array(_) | plist::Value::Dictionary(_) => format!("{:?}", val),
+            _ => format!("{:?}", val),
+        }
+    }
     /// Read a value from the given domain and key.
     ///
     /// If `key` is `None`, returns the entire domain as a `plist::Value`.

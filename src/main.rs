@@ -16,7 +16,7 @@ async fn main() {
 fn parse_domain(sub_m: &ArgMatches) -> Domain {
     let dom = sub_m.get_one::<String>("domain").expect("domain required");
     match dom.as_str() {
-        "-g" | "NSGlobalDomain" => Domain::Global,
+        "-g" | "NSGlobalDomain" | "-globalDomain" => Domain::Global,
         other => Domain::User(other.to_string()),
     }
 }
@@ -53,6 +53,21 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
             }
             Err(e) => eprintln!("Error: {e}"),
         },
+        "find" => {
+            let word = get_required_arg(sub_m, "word");
+            match Preferences::find(word).await {
+                Ok(results) => {
+                    for (domain, matches) in results {
+                        println!("Found {} matches for domain `{}`:", matches.len(), domain);
+                        for m in matches {
+                            println!("    {} = {}", m.key_path, m.value);
+                        }
+                        println!();
+                    }
+                }
+                Err(e) => eprintln!("Error: {e}"),
+            }
+        }
         _ => {
             let domain = parse_domain(sub_m);
             match cmd {
