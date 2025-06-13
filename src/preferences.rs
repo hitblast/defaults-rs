@@ -2,6 +2,7 @@
 
 use crate::prefs::error::PrefError;
 use crate::prefs::types::{Domain, PrefValue, ReadResult};
+use futures::future::join_all;
 use plist::Value as PlistValue;
 use std::io::Cursor;
 use std::path::PathBuf;
@@ -179,23 +180,6 @@ impl Preferences {
     pub async fn write(domain: Domain, key: &str, value: PrefValue) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
 
-        fn to_plist_value(val: &PrefValue) -> PlistValue {
-            match val {
-                PrefValue::String(s) => PlistValue::String(s.clone()),
-                PrefValue::Integer(i) => PlistValue::Integer((*i).into()),
-                PrefValue::Float(f) => PlistValue::Real(*f),
-                PrefValue::Boolean(b) => PlistValue::Boolean(*b),
-                PrefValue::Array(arr) => {
-                    PlistValue::Array(arr.iter().map(to_plist_value).collect())
-                }
-                PrefValue::Dictionary(dict) => PlistValue::Dictionary(
-                    dict.iter()
-                        .map(|(k, v)| (k.clone(), to_plist_value(v)))
-                        .collect(),
-                ),
-            }
-        }
-
         let mut root = if fs::metadata(&path).await.is_ok() {
             let mut file = File::open(&path).await.map_err(PrefError::Io)?;
             let mut buf = Vec::new();
@@ -208,7 +192,7 @@ impl Preferences {
         };
 
         if let PlistValue::Dictionary(ref mut dict) = root {
-            dict.insert(key.to_string(), to_plist_value(&value));
+            dict.insert(key.to_string(), Self::to_plist_value(&value));
         } else {
             return Err(PrefError::InvalidType);
         }
@@ -220,6 +204,63 @@ impl Preferences {
         let mut file = File::create(&path).await.map_err(PrefError::Io)?;
         file.write_all(&buf).await.map_err(PrefError::Io)?;
         file.flush().await.map_err(PrefError::Io)?;
+        Ok(())
+    }
+
+    fn to_plist_value(val: &PrefValue) -> PlistValue {
+        match val {
+            PrefValue::String(s) => PlistValue::String(s.clone()),
+            PrefValue::Integer(i) => PlistValue::Integer((*i).into()),
+            PrefValue::Float(f) => PlistValue::Real(*f),
+            PrefValue::Boolean(b) => PlistValue::Boolean(*b),
+            PrefValue::Array(arr) => {
+                PlistValue::Array(arr.iter().map(Self::to_plist_value).collect())
+            }
+            PrefValue::Dictionary(dict) => PlistValue::Dictionary(
+                dict.iter()
+                    .map(|(k, v)| (k.clone(), Self::to_plist_value(v)))
+                    .collect(),
+            ),
+        }
+    }
+
+    /// Batch write multiple keys for domains concurrently.
+    pub async fn write_batch(
+        batch: Vec<(Domain, Vec<(String, PrefValue)>)>,
+    ) -> Result<(), PrefError> {
+        let tasks = batch.into_iter().map(|(domain, writes)| async move {
+            let path = Self::domain_path(&domain);
+            let mut root = if fs::metadata(&path).await.is_ok() {
+                let mut file = File::open(&path).await.map_err(PrefError::Io)?;
+                let mut buf = Vec::new();
+                file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
+                PlistValue::from_reader_xml(Cursor::new(&buf[..]))
+                    .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
+                    .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?
+            } else {
+                PlistValue::Dictionary(plist::Dictionary::new())
+            };
+
+            if let PlistValue::Dictionary(ref mut dict) = root {
+                for (key, value) in writes {
+                    dict.insert(key, Self::to_plist_value(&value));
+                }
+            } else {
+                return Err(PrefError::InvalidType);
+            }
+
+            let mut buf = Vec::new();
+            root.to_writer_xml(&mut buf)
+                .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
+            let mut file = File::create(&path).await.map_err(PrefError::Io)?;
+            file.write_all(&buf).await.map_err(PrefError::Io)?;
+            file.flush().await.map_err(PrefError::Io)?;
+            Ok(())
+        });
+        let results = join_all(tasks).await;
+        for res in results {
+            res?;
+        }
         Ok(())
     }
 
