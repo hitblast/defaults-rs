@@ -1,6 +1,12 @@
+<div align="center">
+
+<img src="assets/logo.png">
+
 # <img src="https://raw.githubusercontent.com/github/explore/80688e429a7d4ef2fca1e82350fe8e3517d3494d/topics/rust/rust.png" width="40px"> defaults-rs
 
 Near drop-in replacement for the macOS `defaults` CLI with API bindings for Rust
+
+</div>
 
 > [!IMPORTANT]
 > Consider starring the project if you like it! It really supports and motivates me to make more projects like these.
