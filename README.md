@@ -9,10 +9,10 @@ Near drop-in replacement for the macOS `defaults` CLI with API bindings for Rust
 
 ## Key Features
 
-- **CLI (`drs`)**: Use it as a replacement for the `defaults` CLI tool on Macs.
+- **CLI (`drs`)**: Use it as a direct replacement for `defaults` without hassle.
 - **Async Rust API**: Read, write, delete, rename, import/export, and inspect preferences from Rust code.
 - **Supports**: User and global domains, all plist value types (int, float, bool, string, arrays, dictionaries).
-- **Apple-style Output**: Pretty-prints plist data in the familiar macOS format.
+- **Familiar Style**: Pretty-prints plist data close to the original `defaults` format.
 - **Binary & XML Plist**: Handles both binary and XML plist files transparently.
 - **Extensible**: Designed for easy addition of new commands and value types.
 
@@ -34,7 +34,8 @@ cargo install defaults-rs
 
 ### Manual Build & Install
 
-> [!NOTE] > `defaults-rs` requires Rust **(v1.70 or greater)** to be installed on your machine. Also, builds are only possible on macOS.
+> [!NOTE]
+> `defaults-rs` requires Rust **(v1.70 or greater)** to be installed on your machine. Also, builds are only possible on macOS.
 
 ```sh
 cargo install --git https://github.com/hitblast/defaults-rs
