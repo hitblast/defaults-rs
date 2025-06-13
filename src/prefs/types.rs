@@ -20,8 +20,9 @@ pub enum PrefValue {
     Dictionary(HashMap<String, PrefValue>),
 }
 
-// Extension: Add helper on PrefValue
+// Extension for PrefValue
 impl PrefValue {
+    /// Converts a type flag into its PrefValue counterpart.
     pub fn from_str(type_flag: &str, s: &str) -> Result<Self, String> {
         match type_flag {
             "int" => s
@@ -42,6 +43,7 @@ impl PrefValue {
         }
     }
 
+    /// Returns the name of the type for the PrefValue instance.
     pub fn type_name(&self) -> &'static str {
         match self {
             PrefValue::String(_) => "string",
