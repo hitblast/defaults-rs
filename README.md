@@ -75,6 +75,12 @@ drs delete com.apple.dock tilesize
 drs read com.apple.dock
 ```
 
+#### List all entries in all domains containing word
+
+```sh
+drs find <word>
+```
+
 #### View all domains
 
 ```sh
