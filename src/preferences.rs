@@ -9,6 +9,13 @@ use std::path::PathBuf;
 use tokio::fs::{self, File};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+#[cfg(target_os = "macos")]
+use libc::{gid_t, uid_t};
+
+use std::os::unix::ffi::OsStrExt;
+#[cfg(target_os = "macos")]
+use std::os::unix::fs::MetadataExt;
+
 /// Provides asynchronous operations for reading, writing, deleting, and managing
 /// macOS plist preference files in user or global domains.
 pub struct Preferences;
@@ -20,6 +27,22 @@ pub struct FindMatch {
 }
 
 impl Preferences {
+    /// Restore file ownership to the given uid/gid.
+    fn restore_ownership<P: AsRef<std::path::Path>>(
+        path: P,
+        uid: u32,
+        gid: u32,
+    ) -> std::io::Result<()> {
+        use std::ffi::CString;
+        let c_path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+        // Safety: chown is a syscall, returns 0 on success, -1 on error
+        let res = unsafe { libc::chown(c_path.as_ptr(), uid as uid_t, gid as gid_t) };
+        if res == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
     /// Search all domains for keys or values containing the given word (case-insensitive).
     ///
     /// Returns a map from domain name to a vector of FindMatch.
@@ -180,6 +203,9 @@ impl Preferences {
     pub async fn write(domain: Domain, key: &str, value: PrefValue) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
 
+        #[cfg(target_os = "macos")]
+        let orig_owner = std::fs::metadata(&path).ok().map(|m| (m.uid(), m.gid()));
+
         let mut root = if fs::metadata(&path).await.is_ok() {
             let mut file = File::open(&path).await.map_err(PrefError::Io)?;
             let mut buf = Vec::new();
@@ -204,6 +230,12 @@ impl Preferences {
         let mut file = File::create(&path).await.map_err(PrefError::Io)?;
         file.write_all(&buf).await.map_err(PrefError::Io)?;
         file.flush().await.map_err(PrefError::Io)?;
+
+        #[cfg(target_os = "macos")]
+        if let Some((uid, gid)) = orig_owner {
+            let _ = Self::restore_ownership(&path, uid, gid);
+        }
+
         Ok(())
     }
 
@@ -230,6 +262,10 @@ impl Preferences {
     ) -> Result<(), PrefError> {
         let tasks = batch.into_iter().map(|(domain, writes)| async move {
             let path = Self::domain_path(&domain);
+
+            #[cfg(target_os = "macos")]
+            let orig_owner = std::fs::metadata(&path).ok().map(|m| (m.uid(), m.gid()));
+
             let mut root = if fs::metadata(&path).await.is_ok() {
                 let mut file = File::open(&path).await.map_err(PrefError::Io)?;
                 let mut buf = Vec::new();
@@ -255,6 +291,12 @@ impl Preferences {
             let mut file = File::create(&path).await.map_err(PrefError::Io)?;
             file.write_all(&buf).await.map_err(PrefError::Io)?;
             file.flush().await.map_err(PrefError::Io)?;
+
+            #[cfg(target_os = "macos")]
+            if let Some((uid, gid)) = orig_owner {
+                let _ = Self::restore_ownership(&path, uid, gid);
+            }
+
             Ok(())
         });
         let results = join_all(tasks).await;
@@ -291,6 +333,9 @@ impl Preferences {
                 Ok(())
             }
             Some(k) => {
+                #[cfg(target_os = "macos")]
+                let orig_owner = std::fs::metadata(&path).ok().map(|m| (m.uid(), m.gid()));
+
                 if fs::metadata(&path).await.is_err() {
                     return Err(PrefError::KeyNotFound);
                 }
@@ -310,6 +355,12 @@ impl Preferences {
                         let mut file = File::create(&path).await.map_err(PrefError::Io)?;
                         file.write_all(&out_buf).await.map_err(PrefError::Io)?;
                         file.flush().await.map_err(PrefError::Io)?;
+
+                        #[cfg(target_os = "macos")]
+                        if let Some((uid, gid)) = orig_owner {
+                            let _ = Self::restore_ownership(&path, uid, gid);
+                        }
+
                         Ok(())
                     } else {
                         Err(PrefError::KeyNotFound)
@@ -382,6 +433,10 @@ impl Preferences {
     /// or `PrefError::InvalidType` if the root plist is not a dictionary.
     pub async fn rename(domain: Domain, old_key: &str, new_key: &str) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
+
+        #[cfg(target_os = "macos")]
+        let orig_owner = std::fs::metadata(&path).ok().map(|m| (m.uid(), m.gid()));
+
         if fs::metadata(&path).await.is_err() {
             return Err(PrefError::KeyNotFound);
         }
@@ -402,6 +457,12 @@ impl Preferences {
                 let mut file = File::create(&path).await.map_err(PrefError::Io)?;
                 file.write_all(&out_buf).await.map_err(PrefError::Io)?;
                 file.flush().await.map_err(PrefError::Io)?;
+
+                #[cfg(target_os = "macos")]
+                if let Some((uid, gid)) = orig_owner {
+                    let _ = Self::restore_ownership(&path, uid, gid);
+                }
+
                 Ok(())
             } else {
                 Err(PrefError::KeyNotFound)
@@ -425,9 +486,19 @@ impl Preferences {
     /// Returns `PrefError::Io` if the file cannot be copied.
     pub async fn import(domain: Domain, import_path: &str) -> Result<(), PrefError> {
         let dest_path = Self::domain_path(&domain);
-        fs::copy(import_path, dest_path)
+
+        let orig_owner = std::fs::metadata(&dest_path)
+            .ok()
+            .map(|m| (m.uid(), m.gid()));
+
+        fs::copy(import_path, &dest_path)
             .await
             .map_err(PrefError::Io)?;
+
+        if let Some((uid, gid)) = orig_owner {
+            let _ = Self::restore_ownership(&dest_path, uid, gid);
+        }
+
         Ok(())
     }
 
