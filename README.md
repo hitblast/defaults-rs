@@ -48,10 +48,16 @@ brew install hitblast/tap/drs
 cargo install defaults-rs
 ```
 
+### Using `mise`:
+
+```sh
+# NOTE: This will compile the binary for your system.
+mise use -g cargo:defaults-rs
+```
+
 ### Manual Build & Install
 
-> [!NOTE]
-> `defaults-rs` requires Rust **(v1.70 or greater)** to be installed on your machine. Also, builds are only possible on macOS.
+> [!NOTE] > `defaults-rs` requires Rust **(v1.70 or greater)** to be installed on your machine. Also, builds are only possible on macOS.
 
 ```sh
 cargo install --git https://github.com/hitblast/defaults-rs
