@@ -39,20 +39,20 @@ Near drop-in replacement for the macOS `defaults` CLI with API bindings for Rust
 ### Using `brew`:
 
 ```sh
-brew install hitblast/tap/drs
+$ brew install hitblast/tap/drs
 ```
 
 ### Using `cargo`:
 
 ```sh
-cargo install defaults-rs
+$ cargo install defaults-rs
 ```
 
 ### Using `mise`:
 
 ```sh
 # NOTE: This will compile the binary for your system.
-mise use -g cargo:defaults-rs
+$ mise use -g cargo:defaults-rs
 ```
 
 ### Manual Build & Install
@@ -61,7 +61,7 @@ mise use -g cargo:defaults-rs
 > `defaults-rs` requires Rust **(v1.70 or greater)** to be installed on your machine. Also, builds are only possible on macOS.
 
 ```sh
-cargo install --git https://github.com/hitblast/defaults-rs
+$ cargo install --git https://github.com/hitblast/defaults-rs
 ```
 
 ---
@@ -75,65 +75,65 @@ The CLI command is `drs`. It closely mimics the original `defaults` tool.
 #### Read a key
 
 ```sh
-drs read com.apple.dock tilesize
+$ drs read com.apple.dock tilesize
 ```
 
 #### Write a key
 
 ```sh
-drs write com.apple.dock tilesize -i 48
+$ drs write com.apple.dock tilesize -i 48
 # or
-drs write com.apple.dock tilesize --int 48
+$ drs write com.apple.dock tilesize --int 48
 ```
 
 #### Delete a key
 
 ```sh
-drs delete com.apple.dock tilesize
+$ drs delete com.apple.dock tilesize
 ```
 
 #### Read the whole domain
 
 ```sh
-drs read com.apple.dock
+$ drs read com.apple.dock
 ```
 
 #### List all entries in all domains containing word
 
 ```sh
-drs find <word>
+$ drs find <word>
 ```
 
 #### View all domains
 
 ```sh
-drs domains
+$ drs domains
 ```
 
 #### Use the global domain
 
 ```sh
-drs read -g com.apple.keyboard.fnState
-drs write -g InitialKeyRepeat --int 25
+$ drs read -g com.apple.keyboard.fnState
+$ drs write -g InitialKeyRepeat --int 25
 ```
 
 #### Read the type of a key
 
 ```sh
-drs read-type com.apple.dock tilesize
+$ drs read-type com.apple.dock tilesize
 ```
 
 #### Rename a key
 
 ```sh
-drs rename com.apple.dock oldKey newKey
+$ drs rename com.apple.dock oldKey newKey
 ```
 
 #### Import/Export a domain
 
 ```sh
-drs import com.apple.dock ./mysettings.plist
-drs export com.apple.dock ./backup.plist
+$ drs import com.apple.dock ./mysettings.plist
+$ drs export com.apple.dock ./backup.plist
 ```
 
 ---
@@ -143,7 +143,7 @@ drs export com.apple.dock ./backup.plist
 To access the developer-side API for `defaults-rs`, run the following command and add it to your Cargo project:
 
 ```sh
-cargo add defaults-rs
+$ cargo add defaults-rs
 ```
 
 Please refer to the [API reference](https://hitblast.github.io/defaults-rs) for more information about all the available functions.
