@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 /// Preferences domain (user or global).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Domain {
     /// A user domain, e.g., "com.apple.finder"
     User(String),
