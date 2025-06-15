@@ -17,7 +17,19 @@ fn parse_domain(sub_m: &ArgMatches) -> Domain {
     let dom = sub_m.get_one::<String>("domain").expect("domain required");
     match dom.as_str() {
         "-g" | "NSGlobalDomain" | "-globalDomain" => Domain::Global,
-        other => Domain::User(other.to_string()),
+        other => {
+            if other.contains("..")
+                || other.contains('/')
+                || other.contains('\\')
+                || !other
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
+            {
+                eprintln!("Error: invalid domain name: {}", other);
+                std::process::exit(1);
+            }
+            Domain::User(other.to_string())
+        }
     }
 }
 
@@ -106,7 +118,7 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
                         ("string", val)
                     } else {
                         eprintln!(
-                            "Error: You must specify one of -int, -float, -bool, or -string for the value type."
+                            "Error: You must specify one of --int, --float, --bool, or --string for the value type."
                         );
                         std::process::exit(1);
                     };

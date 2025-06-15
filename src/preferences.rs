@@ -1,8 +1,6 @@
-//! The API side of defaults-rs.
-
 use crate::prefs::{
     error::PrefError,
-    types::{Domain, FindMatch, PrefValue, ReadResult},
+    types::{Domain, FindMatch, LoadedPlist, PrefValue, ReadResult},
 };
 use futures::future::join_all;
 use libc::{gid_t, uid_t};
@@ -12,7 +10,10 @@ use std::{
     collections::{BTreeMap, HashMap},
     ffi::CString,
     io::Cursor,
-    os::unix::{ffi::OsStrExt, fs::MetadataExt},
+    os::{
+        fd::AsRawFd,
+        unix::{ffi::OsStrExt, fs::MetadataExt},
+    },
     path::PathBuf,
 };
 use tokio::{
@@ -30,38 +31,95 @@ pub struct Preferences;
 
 impl Preferences {
     /// Loads the plist for the specified path.
-    async fn load_plist(path: &PathBuf) -> Result<(PlistValue, Option<(u32, u32)>), PrefError> {
+    async fn load_plist(path: &PathBuf) -> Result<LoadedPlist, PrefError> {
         let orig_owner = std::fs::metadata(path).ok().map(|m| (m.uid(), m.gid()));
 
-        let plist = if fs::metadata(path).await.is_ok() {
+        let (plist, is_binary) = if fs::metadata(path).await.is_ok() {
             let mut file = File::open(path).await.map_err(PrefError::Io)?;
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-            PlistValue::from_reader_xml(Cursor::new(&buf[..]))
-                .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
-                .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?
+            match PlistValue::from_reader_xml(Cursor::new(&buf[..])) {
+                Ok(plist) => (plist, false),
+                Err(_) => {
+                    let plist = PlistValue::from_reader(Cursor::new(&buf[..]))
+                        .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
+                    (plist, true)
+                }
+            }
         } else {
-            PlistValue::Dictionary(plist::Dictionary::new())
+            (PlistValue::Dictionary(plist::Dictionary::new()), false)
         };
 
-        Ok((plist, orig_owner))
+        Ok(LoadedPlist {
+            plist,
+            orig_owner,
+            is_binary,
+        })
     }
 
-    /// Saves the plist to the specified path and restores ownership.
+    /// Saves the plist to the specified path and restores ownership using an atomic write.
     async fn save_plist(
         path: &PathBuf,
         plist: &PlistValue,
         orig_owner: Option<(u32, u32)>,
+        is_binary: bool,
     ) -> Result<(), PrefError> {
+        // acquire exclusive lock on target file
+        let lock_file = std::fs::OpenOptions::new().read(true).open(path);
+        let mut guard_fd = None;
+        if let Ok(f) = lock_file {
+            let fd = f.as_raw_fd();
+            unsafe { libc::flock(fd, libc::LOCK_EX) };
+            guard_fd = Some(f);
+        }
+
+        // prepare buffer
         let mut buf = Vec::new();
-        plist
-            .to_writer_xml(&mut buf)
-            .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
-        let mut file = File::create(path).await.map_err(PrefError::Io)?;
-        file.write_all(&buf).await.map_err(PrefError::Io)?;
-        file.flush().await.map_err(PrefError::Io)?;
+        if is_binary {
+            plist
+                .to_writer_binary(&mut buf)
+                .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
+        } else {
+            plist
+                .to_writer_xml(&mut buf)
+                .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
+        }
+
+        // capture original file mode permissions
+        let orig_perm = std::fs::metadata(path).ok().map(|m| m.permissions());
+
+        // create temporary file in the same directory
+        let dir = path
+            .parent()
+            .ok_or_else(|| PrefError::Other("Invalid path".into()))?;
+        let fname = path
+            .file_name()
+            .ok_or_else(|| PrefError::Other("Invalid path".into()))?;
+        let tmp_name = format!("{}.tmp", fname.to_string_lossy());
+        let tmp_path = dir.join(tmp_name);
+        let mut tmp_file = File::create(&tmp_path).await.map_err(PrefError::Io)?;
+        tmp_file.write_all(&buf).await.map_err(PrefError::Io)?;
+        tmp_file.flush().await.map_err(PrefError::Io)?;
+
+        // restore ownership on temp file if needed
         if let Some((uid, gid)) = orig_owner {
-            let _ = Self::restore_ownership(path, uid, gid);
+            let _ = Self::restore_ownership(&tmp_path, uid, gid);
+        }
+
+        // atomically replace original file
+        tokio::fs::rename(&tmp_path, path)
+            .await
+            .map_err(PrefError::Io)?;
+
+        // preserve original mode bits
+        if let Some(perm) = orig_perm {
+            std::fs::set_permissions(path, perm).map_err(PrefError::Io)?;
+        }
+
+        // release file lock
+        if let Some(f) = guard_fd {
+            let fd = f.as_raw_fd();
+            unsafe { libc::flock(fd, libc::LOCK_UN) };
         }
         Ok(())
     }
@@ -94,10 +152,11 @@ impl Preferences {
             } else {
                 Domain::User(domain_name.clone())
             };
-            let (plist, _) = match Self::read_internal(&domain).await {
-                Ok((p, o)) => (p, o),
+            let loaded = match Self::read_internal(&domain).await {
+                Ok(l) => l,
                 Err(_) => continue,
             };
+            let plist = loaded.plist;
             let mut matches = Vec::new();
             Self::find_in_value(&plist, &word_lower, String::new(), &mut matches);
             if !matches.is_empty() {
@@ -165,7 +224,7 @@ impl Preferences {
     }
 
     /// Loads the plist for the given domain.
-    async fn read_internal(domain: &Domain) -> Result<(PlistValue, Option<(u32, u32)>), PrefError> {
+    async fn read_internal(domain: &Domain) -> Result<LoadedPlist, PrefError> {
         let path = Self::domain_path(domain);
         Self::load_plist(&path).await
     }
@@ -175,7 +234,8 @@ impl Preferences {
     /// If `key` is `None`, returns the entire domain as a `plist::Value`.
     /// If `key` is provided, returns the value at that key as a `PrefValue`.
     pub async fn read(domain: Domain, key: Option<&str>) -> Result<ReadResult, PrefError> {
-        let (plist, _) = Self::read_internal(&domain).await?;
+        let loaded = Self::read_internal(&domain).await?;
+        let plist = loaded.plist;
         match key {
             Some(k) => {
                 if let PlistValue::Dictionary(dict) = &plist {
@@ -197,13 +257,13 @@ impl Preferences {
     /// If the key already exists, its value will be overwritten.
     pub async fn write(domain: Domain, key: &str, value: PrefValue) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
-        let (mut plist, orig_owner) = Self::load_plist(&path).await?;
-        if let PlistValue::Dictionary(ref mut dict) = plist {
+        let mut loaded = Self::load_plist(&path).await?;
+        if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
             dict.insert(key.to_string(), Self::to_plist_value(&value));
         } else {
             return Err(PrefError::InvalidType);
         }
-        Self::save_plist(&path, &plist, orig_owner).await
+        Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary).await
     }
 
     /// Converts a `PrefValue` into a plist Value.
@@ -238,10 +298,11 @@ impl Preferences {
                 Ok(())
             }
             Some(k) => {
-                let (mut plist, orig_owner) = Self::load_plist(&path).await?;
-                if let PlistValue::Dictionary(ref mut dict) = plist {
+                let mut loaded = Self::load_plist(&path).await?;
+                if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
                     if dict.remove(k).is_some() {
-                        Self::save_plist(&path, &plist, orig_owner).await
+                        Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary)
+                            .await
                     } else {
                         Err(PrefError::KeyNotFound)
                     }
@@ -256,7 +317,8 @@ impl Preferences {
     ///
     /// Returns a string describing the type.
     pub async fn read_type(domain: Domain, key: &str) -> Result<String, PrefError> {
-        let (plist, _) = Self::read_internal(&domain).await?;
+        let loaded = Self::read_internal(&domain).await?;
+        let plist = loaded.plist;
         if let PlistValue::Dictionary(dict) = &plist {
             match dict.get(key) {
                 Some(val) => Ok(match val {
@@ -281,11 +343,11 @@ impl Preferences {
     /// Moves the value from `old_key` to `new_key` within the domain plist.
     pub async fn rename(domain: Domain, old_key: &str, new_key: &str) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
-        let (mut plist, orig_owner) = Self::load_plist(&path).await?;
-        if let PlistValue::Dictionary(ref mut dict) = plist {
+        let mut loaded = Self::load_plist(&path).await?;
+        if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
             if let Some(val) = dict.remove(old_key) {
                 dict.insert(new_key.to_string(), val);
-                Self::save_plist(&path, &plist, orig_owner).await
+                Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary).await
             } else {
                 Err(PrefError::KeyNotFound)
             }
@@ -419,15 +481,15 @@ impl Preferences {
         }
         let tasks = groups.into_iter().map(|(domain, writes)| async move {
             let path = Self::domain_path(&domain);
-            let (mut plist, orig_owner) = Self::load_plist(&path).await?;
-            if let PlistValue::Dictionary(ref mut dict) = plist {
+            let mut loaded = Self::load_plist(&path).await?;
+            if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
                 for (key, value) in writes {
                     dict.insert(key, Self::to_plist_value(&value));
                 }
             } else {
                 return Err(PrefError::InvalidType);
             }
-            Self::save_plist(&path, &plist, orig_owner).await
+            Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary).await
         });
         for res in join_all(tasks).await {
             res?;
@@ -457,7 +519,8 @@ impl Preferences {
 
         // Spawn concurrent futures to process each domain.
         let futures = groups.into_iter().map(|(domain, keys)| async move {
-            let (plist, _) = Self::read_internal(&domain).await?;
+            let loaded = Self::read_internal(&domain).await?;
+            let plist = loaded.plist;
             let mut res = Vec::new();
             for key in keys {
                 match key.as_deref() {
@@ -511,8 +574,8 @@ impl Preferences {
                 Self::delete(domain.clone(), None).await
             } else {
                 let path = Self::domain_path(&domain);
-                let (mut plist, orig_owner) = Self::load_plist(&path).await?;
-                if let PlistValue::Dictionary(ref mut dict) = plist {
+                let mut loaded = Self::load_plist(&path).await?;
+                if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
                     for key in keys {
                         if let Some(k) = key {
                             if dict.remove(&k).is_none() {
@@ -523,7 +586,7 @@ impl Preferences {
                 } else {
                     return Err(PrefError::InvalidType);
                 }
-                Self::save_plist(&path, &plist, orig_owner).await
+                Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary).await
             }
         });
 

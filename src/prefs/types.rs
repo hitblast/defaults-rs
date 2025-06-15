@@ -2,6 +2,7 @@
 //!
 //! The batch operations in the API (batch-read and batch-delete) work on the [`Domain`] and [`PrefValue`] types.
 
+use plist::Value as PlistValue;
 use std::collections::HashMap;
 
 /// Preferences domain (user or global).
@@ -70,4 +71,11 @@ pub enum ReadResult {
 pub struct FindMatch {
     pub key_path: String,
     pub value: String,
+}
+
+/// Struct representing a loaded plist, including its original owner and whether it was read as binary.
+pub struct LoadedPlist {
+    pub plist: PlistValue,
+    pub orig_owner: Option<(u32, u32)>,
+    pub is_binary: bool,
 }
