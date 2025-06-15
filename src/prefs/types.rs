@@ -61,3 +61,9 @@ pub enum ReadResult {
     Value(PrefValue),
     Plist(plist::Value),
 }
+
+/// Result of a find operation.
+pub struct FindMatch {
+    pub key_path: String,
+    pub value: String,
+}

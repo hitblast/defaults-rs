@@ -1,33 +1,66 @@
 //! The API side of defaults-rs.
 
 use crate::prefs::error::PrefError;
-use crate::prefs::types::{Domain, PrefValue, ReadResult};
+use crate::prefs::types::{Domain, FindMatch, PrefValue, ReadResult};
 use futures::future::join_all;
+use once_cell::sync::Lazy;
 use plist::Value as PlistValue;
 use std::io::Cursor;
 use std::path::PathBuf;
 use tokio::fs::{self, File};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-#[cfg(target_os = "macos")]
 use libc::{gid_t, uid_t};
-
 use std::os::unix::ffi::OsStrExt;
-#[cfg(target_os = "macos")]
 use std::os::unix::fs::MetadataExt;
+
+/// Cached HOME environment variable.
+static HOME: Lazy<String> =
+    Lazy::new(|| std::env::var("HOME").expect("HOME environment variable not set"));
 
 /// Provides asynchronous operations for reading, writing, deleting, and managing
 /// macOS plist preference files in user or global domains.
 pub struct Preferences;
 
-/// Result of a find operation.
-pub struct FindMatch {
-    pub key_path: String,
-    pub value: String,
-}
-
 impl Preferences {
-    /// Restore file ownership to the given uid/gid.
+    /// Loads the plist for the specified path.
+    async fn load_plist(path: &PathBuf) -> Result<(PlistValue, Option<(u32, u32)>), PrefError> {
+        let orig_owner = std::fs::metadata(path).ok().map(|m| (m.uid(), m.gid()));
+
+        let plist = if fs::metadata(path).await.is_ok() {
+            let mut file = File::open(path).await.map_err(PrefError::Io)?;
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
+            PlistValue::from_reader_xml(Cursor::new(&buf[..]))
+                .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
+                .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?
+        } else {
+            PlistValue::Dictionary(plist::Dictionary::new())
+        };
+
+        Ok((plist, orig_owner))
+    }
+
+    /// Saves the plist to the specified path and restores ownership.
+    async fn save_plist(
+        path: &PathBuf,
+        plist: &PlistValue,
+        orig_owner: Option<(u32, u32)>,
+    ) -> Result<(), PrefError> {
+        let mut buf = Vec::new();
+        plist
+            .to_writer_xml(&mut buf)
+            .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
+        let mut file = File::create(path).await.map_err(PrefError::Io)?;
+        file.write_all(&buf).await.map_err(PrefError::Io)?;
+        file.flush().await.map_err(PrefError::Io)?;
+        if let Some((uid, gid)) = orig_owner {
+            let _ = Self::restore_ownership(path, uid, gid);
+        }
+        Ok(())
+    }
+
+    /// Restores file ownership to the given uid/gid.
     fn restore_ownership<P: AsRef<std::path::Path>>(
         path: P,
         uid: u32,
@@ -35,7 +68,8 @@ impl Preferences {
     ) -> std::io::Result<()> {
         use std::ffi::CString;
         let c_path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
-        // Safety: chown is a syscall, returns 0 on success, -1 on error
+
+        // safety: chown is a syscall, returns 0 on success, -1 on error
         let res = unsafe { libc::chown(c_path.as_ptr(), uid as uid_t, gid as gid_t) };
         if res == 0 {
             Ok(())
@@ -43,9 +77,8 @@ impl Preferences {
             Err(std::io::Error::last_os_error())
         }
     }
+
     /// Search all domains for keys or values containing the given word (case-insensitive).
-    ///
-    /// Returns a map from domain name to a vector of FindMatch.
     pub async fn find(
         word: &str,
     ) -> Result<std::collections::BTreeMap<String, Vec<FindMatch>>, PrefError> {
@@ -59,9 +92,9 @@ impl Preferences {
             } else {
                 Domain::User(domain_name.clone())
             };
-            let plist = match Self::read(domain, None).await {
-                Ok(ReadResult::Plist(plist)) => plist,
-                _ => continue,
+            let (plist, _) = match Self::read_internal(&domain).await {
+                Ok((p, o)) => (p, o),
+                Err(_) => continue,
             };
             let mut matches = Vec::new();
             Self::find_in_value(&plist, &word_lower, String::new(), &mut matches);
@@ -72,17 +105,16 @@ impl Preferences {
         Ok(results)
     }
 
+    /// Recursively searches a plist Value.
     fn find_in_value(
         val: &plist::Value,
         word_lower: &str,
         key_path: String,
         matches: &mut Vec<FindMatch>,
     ) {
-        // Helper to check if a string contains the word (case-insensitive)
         fn contains_word(haystack: &str, needle: &str) -> bool {
             haystack.to_lowercase().contains(needle)
         }
-
         match val {
             plist::Value::Dictionary(dict) => {
                 for (k, v) in dict {
@@ -91,14 +123,12 @@ impl Preferences {
                     } else {
                         format!("{}.{}", key_path, k)
                     };
-                    // Check key match
                     if contains_word(k, word_lower) {
                         matches.push(FindMatch {
                             key_path: new_key_path.clone(),
                             value: Self::plist_value_to_string(v),
                         });
                     }
-                    // Recurse
                     Self::find_in_value(v, word_lower, new_key_path, matches);
                 }
             }
@@ -120,55 +150,30 @@ impl Preferences {
         }
     }
 
+    /// Converts a plist Value into a string.
     fn plist_value_to_string(val: &plist::Value) -> String {
         match val {
             plist::Value::String(s) => format!("{:?}", s),
-            plist::Value::Integer(i) => i.to_string(),
+            plist::Value::Integer(i) => i.as_signed().unwrap_or(0).to_string(),
             plist::Value::Real(f) => f.to_string(),
             plist::Value::Boolean(b) => b.to_string(),
             plist::Value::Array(_) | plist::Value::Dictionary(_) => format!("{:?}", val),
             _ => format!("{:?}", val),
         }
     }
+
+    /// Loads the plist for the given domain.
+    async fn read_internal(domain: &Domain) -> Result<(PlistValue, Option<(u32, u32)>), PrefError> {
+        let path = Self::domain_path(domain);
+        Self::load_plist(&path).await
+    }
+
     /// Read a value from the given domain and key.
     ///
     /// If `key` is `None`, returns the entire domain as a `plist::Value`.
     /// If `key` is provided, returns the value at that key as a `PrefValue`.
-    ///
-    /// # Arguments
-    ///
-    /// * `domain` - The domain to read from (global or user).
-    /// * `key` - The key to read, or `None` to read the entire domain.
-    ///
-    /// # Errors
-    ///
-    /// Returns `PrefError::Io` if the file cannot be read,
-    /// `PrefError::Other` if the plist cannot be parsed,
-    /// `PrefError::KeyNotFound` if the key does not exist,
-    /// or `PrefError::InvalidType` if the plist is not a dictionary.
     pub async fn read(domain: Domain, key: Option<&str>) -> Result<ReadResult, PrefError> {
-        let path = Self::domain_path(&domain);
-        let mut file = File::open(&path).await.map_err(PrefError::Io)?;
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-        let plist = PlistValue::from_reader_xml(Cursor::new(&buf[..]))
-            .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
-            .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
-
-        fn convert(val: &PlistValue) -> PrefValue {
-            match val {
-                PlistValue::String(s) => PrefValue::String(s.clone()),
-                PlistValue::Integer(i) => PrefValue::Integer(i.as_signed().unwrap()),
-                PlistValue::Real(f) => PrefValue::Float(*f),
-                PlistValue::Boolean(b) => PrefValue::Boolean(*b),
-                PlistValue::Array(arr) => PrefValue::Array(arr.iter().map(convert).collect()),
-                PlistValue::Dictionary(dict) => PrefValue::Dictionary(
-                    dict.iter().map(|(k, v)| (k.clone(), convert(v))).collect(),
-                ),
-                _ => PrefValue::String(format!("{:?}", val)),
-            }
-        }
-
+        let (plist, _) = Self::read_internal(&domain).await?;
         match key {
             Some(k) => {
                 if let PlistValue::Dictionary(dict) = &plist {
@@ -188,57 +193,18 @@ impl Preferences {
     ///
     /// If the domain file does not exist, it will be created.
     /// If the key already exists, its value will be overwritten.
-    ///
-    /// # Arguments
-    ///
-    /// * `domain` - The domain to write to (global or user).
-    /// * `key` - The key to write.
-    /// * `value` - The value to write.
-    ///
-    /// # Errors
-    ///
-    /// Returns `PrefError::Io` if the file cannot be read or written,
-    /// `PrefError::Other` if the plist cannot be parsed or written,
-    /// or `PrefError::InvalidType` if the root plist is not a dictionary.
     pub async fn write(domain: Domain, key: &str, value: PrefValue) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
-
-        #[cfg(target_os = "macos")]
-        let orig_owner = std::fs::metadata(&path).ok().map(|m| (m.uid(), m.gid()));
-
-        let mut root = if fs::metadata(&path).await.is_ok() {
-            let mut file = File::open(&path).await.map_err(PrefError::Io)?;
-            let mut buf = Vec::new();
-            file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-            PlistValue::from_reader_xml(Cursor::new(&buf[..]))
-                .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
-                .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?
-        } else {
-            PlistValue::Dictionary(plist::Dictionary::new())
-        };
-
-        if let PlistValue::Dictionary(ref mut dict) = root {
+        let (mut plist, orig_owner) = Self::load_plist(&path).await?;
+        if let PlistValue::Dictionary(ref mut dict) = plist {
             dict.insert(key.to_string(), Self::to_plist_value(&value));
         } else {
             return Err(PrefError::InvalidType);
         }
-
-        let mut buf = Vec::new();
-        root.to_writer_xml(&mut buf)
-            .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
-
-        let mut file = File::create(&path).await.map_err(PrefError::Io)?;
-        file.write_all(&buf).await.map_err(PrefError::Io)?;
-        file.flush().await.map_err(PrefError::Io)?;
-
-        #[cfg(target_os = "macos")]
-        if let Some((uid, gid)) = orig_owner {
-            let _ = Self::restore_ownership(&path, uid, gid);
-        }
-
-        Ok(())
+        Self::save_plist(&path, &plist, orig_owner).await
     }
 
+    /// Converts a `PrefValue` into a plist Value.
     fn to_plist_value(val: &PrefValue) -> PlistValue {
         match val {
             PrefValue::String(s) => PlistValue::String(s.clone()),
@@ -262,45 +228,17 @@ impl Preferences {
     ) -> Result<(), PrefError> {
         let tasks = batch.into_iter().map(|(domain, writes)| async move {
             let path = Self::domain_path(&domain);
-
-            #[cfg(target_os = "macos")]
-            let orig_owner = std::fs::metadata(&path).ok().map(|m| (m.uid(), m.gid()));
-
-            let mut root = if fs::metadata(&path).await.is_ok() {
-                let mut file = File::open(&path).await.map_err(PrefError::Io)?;
-                let mut buf = Vec::new();
-                file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-                PlistValue::from_reader_xml(Cursor::new(&buf[..]))
-                    .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
-                    .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?
-            } else {
-                PlistValue::Dictionary(plist::Dictionary::new())
-            };
-
-            if let PlistValue::Dictionary(ref mut dict) = root {
+            let (mut plist, orig_owner) = Self::load_plist(&path).await?;
+            if let PlistValue::Dictionary(ref mut dict) = plist {
                 for (key, value) in writes {
                     dict.insert(key, Self::to_plist_value(&value));
                 }
             } else {
                 return Err(PrefError::InvalidType);
             }
-
-            let mut buf = Vec::new();
-            root.to_writer_xml(&mut buf)
-                .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
-            let mut file = File::create(&path).await.map_err(PrefError::Io)?;
-            file.write_all(&buf).await.map_err(PrefError::Io)?;
-            file.flush().await.map_err(PrefError::Io)?;
-
-            #[cfg(target_os = "macos")]
-            if let Some((uid, gid)) = orig_owner {
-                let _ = Self::restore_ownership(&path, uid, gid);
-            }
-
-            Ok(())
+            Self::save_plist(&path, &plist, orig_owner).await
         });
-        let results = join_all(tasks).await;
-        for res in results {
+        for res in join_all(tasks).await {
             res?;
         }
         Ok(())
@@ -310,21 +248,8 @@ impl Preferences {
     ///
     /// If `key` is `None`, deletes the entire domain file.
     /// If `key` is provided, removes the key from the domain plist.
-    ///
-    /// # Arguments
-    ///
-    /// * `domain` - The domain to delete from (global or user).
-    /// * `key` - The key to delete, or `None` to delete the entire domain file.
-    ///
-    /// # Errors
-    ///
-    /// Returns `PrefError::Io` if the file cannot be read or written,
-    /// `PrefError::Other` if the plist cannot be parsed or written,
-    /// `PrefError::KeyNotFound` if the key or file does not exist,
-    /// or `PrefError::InvalidType` if the root plist is not a dictionary.
     pub async fn delete(domain: Domain, key: Option<&str>) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
-
         match key {
             None => {
                 if fs::metadata(&path).await.is_ok() {
@@ -333,35 +258,10 @@ impl Preferences {
                 Ok(())
             }
             Some(k) => {
-                #[cfg(target_os = "macos")]
-                let orig_owner = std::fs::metadata(&path).ok().map(|m| (m.uid(), m.gid()));
-
-                if fs::metadata(&path).await.is_err() {
-                    return Err(PrefError::KeyNotFound);
-                }
-                let mut file = File::open(&path).await.map_err(PrefError::Io)?;
-                let mut buf = Vec::new();
-                file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-                let mut plist = PlistValue::from_reader_xml(Cursor::new(&buf[..]))
-                    .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
-                    .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
-
+                let (mut plist, orig_owner) = Self::load_plist(&path).await?;
                 if let PlistValue::Dictionary(ref mut dict) = plist {
                     if dict.remove(k).is_some() {
-                        let mut out_buf = Vec::new();
-                        plist
-                            .to_writer_xml(&mut out_buf)
-                            .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
-                        let mut file = File::create(&path).await.map_err(PrefError::Io)?;
-                        file.write_all(&out_buf).await.map_err(PrefError::Io)?;
-                        file.flush().await.map_err(PrefError::Io)?;
-
-                        #[cfg(target_os = "macos")]
-                        if let Some((uid, gid)) = orig_owner {
-                            let _ = Self::restore_ownership(&path, uid, gid);
-                        }
-
-                        Ok(())
+                        Self::save_plist(&path, &plist, orig_owner).await
                     } else {
                         Err(PrefError::KeyNotFound)
                     }
@@ -374,28 +274,9 @@ impl Preferences {
 
     /// Read the type of a value at the given key in the specified domain.
     ///
-    /// Returns a string describing the type: "string", "integer", "float", "boolean", "array", "dictionary", or "unknown".
-    ///
-    /// # Arguments
-    ///
-    /// * `domain` - The domain to read from.
-    /// * `key` - The key whose type to check.
-    ///
-    /// # Errors
-    ///
-    /// Returns `PrefError::Io` if the file cannot be read,
-    /// `PrefError::Other` if the plist cannot be parsed,
-    /// `PrefError::KeyNotFound` if the key does not exist,
-    /// or `PrefError::InvalidType` if the root plist is not a dictionary.
+    /// Returns a string describing the type.
     pub async fn read_type(domain: Domain, key: &str) -> Result<String, PrefError> {
-        let path = Self::domain_path(&domain);
-        let mut file = File::open(&path).await.map_err(PrefError::Io)?;
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-        let plist = PlistValue::from_reader_xml(Cursor::new(&buf[..]))
-            .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
-            .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
-
+        let (plist, _) = Self::read_internal(&domain).await?;
         if let PlistValue::Dictionary(dict) = &plist {
             match dict.get(key) {
                 Some(val) => Ok(match val {
@@ -418,52 +299,13 @@ impl Preferences {
     /// Rename a key in the given domain.
     ///
     /// Moves the value from `old_key` to `new_key` within the domain plist.
-    ///
-    /// # Arguments
-    ///
-    /// * `domain` - The domain to operate on.
-    /// * `old_key` - The existing key to rename.
-    /// * `new_key` - The new key name.
-    ///
-    /// # Errors
-    ///
-    /// Returns `PrefError::Io` if the file cannot be read or written,
-    /// `PrefError::Other` if the plist cannot be parsed or written,
-    /// `PrefError::KeyNotFound` if the old key does not exist,
-    /// or `PrefError::InvalidType` if the root plist is not a dictionary.
     pub async fn rename(domain: Domain, old_key: &str, new_key: &str) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
-
-        #[cfg(target_os = "macos")]
-        let orig_owner = std::fs::metadata(&path).ok().map(|m| (m.uid(), m.gid()));
-
-        if fs::metadata(&path).await.is_err() {
-            return Err(PrefError::KeyNotFound);
-        }
-        let mut file = File::open(&path).await.map_err(PrefError::Io)?;
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-        let mut plist = PlistValue::from_reader_xml(Cursor::new(&buf[..]))
-            .or_else(|_| PlistValue::from_reader(Cursor::new(&buf[..])))
-            .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
-
+        let (mut plist, orig_owner) = Self::load_plist(&path).await?;
         if let PlistValue::Dictionary(ref mut dict) = plist {
             if let Some(val) = dict.remove(old_key) {
                 dict.insert(new_key.to_string(), val);
-                let mut out_buf = Vec::new();
-                plist
-                    .to_writer_xml(&mut out_buf)
-                    .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
-                let mut file = File::create(&path).await.map_err(PrefError::Io)?;
-                file.write_all(&out_buf).await.map_err(PrefError::Io)?;
-                file.flush().await.map_err(PrefError::Io)?;
-
-                #[cfg(target_os = "macos")]
-                if let Some((uid, gid)) = orig_owner {
-                    let _ = Self::restore_ownership(&path, uid, gid);
-                }
-
-                Ok(())
+                Self::save_plist(&path, &plist, orig_owner).await
             } else {
                 Err(PrefError::KeyNotFound)
             }
@@ -474,46 +316,22 @@ impl Preferences {
 
     /// Import a plist file into the specified domain.
     ///
-    /// Copies the file at `import_path` to the domain's plist location, replacing any existing file.
-    ///
-    /// # Arguments
-    ///
-    /// * `domain` - The domain to import into.
-    /// * `import_path` - The path to the source plist file.
-    ///
-    /// # Errors
-    ///
-    /// Returns `PrefError::Io` if the file cannot be copied.
+    /// Replaces any existing file for the domain.
     pub async fn import(domain: Domain, import_path: &str) -> Result<(), PrefError> {
         let dest_path = Self::domain_path(&domain);
-
         let orig_owner = std::fs::metadata(&dest_path)
             .ok()
             .map(|m| (m.uid(), m.gid()));
-
         fs::copy(import_path, &dest_path)
             .await
             .map_err(PrefError::Io)?;
-
         if let Some((uid, gid)) = orig_owner {
             let _ = Self::restore_ownership(&dest_path, uid, gid);
         }
-
         Ok(())
     }
 
     /// Export a domain's plist file to the specified path.
-    ///
-    /// Copies the domain's plist file to `export_path`.
-    ///
-    /// # Arguments
-    ///
-    /// * `domain` - The domain to export.
-    /// * `export_path` - The destination path for the exported plist file.
-    ///
-    /// # Errors
-    ///
-    /// Returns `PrefError::Io` if the file cannot be copied.
     pub async fn export(domain: Domain, export_path: &str) -> Result<(), PrefError> {
         let src_path = Self::domain_path(&domain);
         fs::copy(src_path, export_path)
@@ -522,38 +340,20 @@ impl Preferences {
         Ok(())
     }
 
-    /// Get the filesystem path for a given domain.
-    ///
-    /// # Arguments
-    ///
-    /// * `domain` - The domain to get the path for.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `PathBuf` pointing to the domain's plist file.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the `HOME` environment variable is not set.
+    /// Returns the filesystem path for a given domain.
     pub(crate) fn domain_path(domain: &Domain) -> PathBuf {
-        let home = std::env::var("HOME").expect("HOME environment variable not set");
         match domain {
             Domain::Global => PathBuf::from(format!(
                 "{}/Library/Preferences/.GlobalPreferences.plist",
-                home
+                &*HOME
             )),
             Domain::User(name) => {
-                PathBuf::from(format!("{}/Library/Preferences/{}.plist", home, name))
+                PathBuf::from(format!("{}/Library/Preferences/{}.plist", &*HOME, name))
             }
         }
     }
 
     /// Pretty-print a `PlistValue` in Apple-style format (for CLI).
-    ///
-    /// # Arguments
-    ///
-    /// * `val` - The plist value to print.
-    /// * `indent` - The indentation level (number of indents).
     pub fn print_apple_style(val: &plist::Value, indent: usize) {
         let ind = |n| "    ".repeat(n);
         match val {
@@ -583,23 +383,11 @@ impl Preferences {
         }
     }
 
-    /// List all available domains in `~/Library/Preferences`.
-    ///
-    /// Returns a sorted vector of domain names, with "NSGlobalDomain" for the global domain.
-    ///
-    /// # Errors
-    ///
-    /// Returns `PrefError::Io` if the directory cannot be read,
-    /// or `PrefError::Other` if the `HOME` environment variable is not set.
+    /// List all available domains in ~/Library/Preferences.
     pub async fn list_domains() -> Result<Vec<String>, PrefError> {
-        let home =
-            std::env::var("HOME").map_err(|e| PrefError::Other(format!("HOME env error: {e}")))?;
+        let home = &*HOME;
         let prefs_dir = PathBuf::from(format!("{}/Library/Preferences", home));
-        let mut entries = match fs::read_dir(&prefs_dir).await {
-            Ok(rd) => rd,
-            Err(e) => return Err(PrefError::Io(e)),
-        };
-
+        let mut entries = fs::read_dir(&prefs_dir).await.map_err(PrefError::Io)?;
         let mut domains = Vec::new();
         while let Some(entry) = entries.next_entry().await.map_err(PrefError::Io)? {
             let path = entry.path();
@@ -607,8 +395,7 @@ impl Preferences {
                 if fname == ".GlobalPreferences.plist" {
                     domains.push("NSGlobalDomain".to_string());
                 } else if fname.ends_with(".plist") && !fname.starts_with('.') {
-                    let dom = fname.trim_end_matches(".plist").to_string();
-                    domains.push(dom);
+                    domains.push(fname.trim_end_matches(".plist").to_string());
                 }
             }
         }
@@ -616,18 +403,7 @@ impl Preferences {
         Ok(domains)
     }
 
-    /// Quote a key for Apple-style plist output if necessary.
-    ///
-    /// Keys containing only alphanumeric characters, '-' or '_' are not quoted.
-    /// Otherwise, the key is quoted and internal quotes are escaped.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The key to quote.
-    ///
-    /// # Returns
-    ///
-    /// Returns the quoted or unquoted key as a `String`.
+    /// Quotes a key for Apple-style output.
     fn quote_key(key: &str) -> String {
         if key
             .chars()
@@ -639,18 +415,7 @@ impl Preferences {
         }
     }
 
-    /// Quote a string for Apple-style plist output if necessary.
-    ///
-    /// Strings containing only alphanumeric characters, '-' or '_' are not quoted.
-    /// Otherwise, the string is quoted and internal quotes are escaped.
-    ///
-    /// # Arguments
-    ///
-    /// * `s` - The string to quote.
-    ///
-    /// # Returns
-    ///
-    /// Returns the quoted or unquoted string as a `String`.
+    /// Quotes a string for Apple-style output.
     fn quote_string(s: &str) -> String {
         if s.chars()
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
@@ -659,5 +424,20 @@ impl Preferences {
         } else {
             format!("\"{}\"", s.replace('"', "\\\""))
         }
+    }
+}
+
+/// Helper to convert a plist Value into a PrefValue.
+fn convert(val: &PlistValue) -> PrefValue {
+    match val {
+        PlistValue::String(s) => PrefValue::String(s.clone()),
+        PlistValue::Integer(i) => PrefValue::Integer(i.as_signed().unwrap_or(0)),
+        PlistValue::Real(f) => PrefValue::Float(*f),
+        PlistValue::Boolean(b) => PrefValue::Boolean(*b),
+        PlistValue::Array(arr) => PrefValue::Array(arr.iter().map(convert).collect()),
+        PlistValue::Dictionary(dict) => {
+            PrefValue::Dictionary(dict.iter().map(|(k, v)| (k.clone(), convert(v))).collect())
+        }
+        _ => PrefValue::String(format!("{:?}", val)),
     }
 }
