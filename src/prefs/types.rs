@@ -1,3 +1,7 @@
+//! This module defines the types for representing preferences.
+//!
+//! The batch operations in the API (batch-read and batch-delete) work on the [`Domain`] and [`PrefValue`] types.
+
 use std::collections::HashMap;
 
 /// Preferences domain (user or global).

@@ -1,18 +1,24 @@
 //! The API side of defaults-rs.
 
-use crate::prefs::error::PrefError;
-use crate::prefs::types::{Domain, FindMatch, PrefValue, ReadResult};
+use crate::prefs::{
+    error::PrefError,
+    types::{Domain, FindMatch, PrefValue, ReadResult},
+};
 use futures::future::join_all;
+use libc::{gid_t, uid_t};
 use once_cell::sync::Lazy;
 use plist::Value as PlistValue;
-use std::io::Cursor;
-use std::path::PathBuf;
-use tokio::fs::{self, File};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-use libc::{gid_t, uid_t};
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::MetadataExt;
+use std::{
+    collections::{BTreeMap, HashMap},
+    ffi::CString,
+    io::Cursor,
+    os::unix::{ffi::OsStrExt, fs::MetadataExt},
+    path::PathBuf,
+};
+use tokio::{
+    fs::{self, File},
+    io::{AsyncReadExt, AsyncWriteExt},
+};
 
 /// Cached HOME environment variable.
 static HOME: Lazy<String> =
@@ -66,7 +72,6 @@ impl Preferences {
         uid: u32,
         gid: u32,
     ) -> std::io::Result<()> {
-        use std::ffi::CString;
         let c_path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
 
         // safety: chown is a syscall, returns 0 on success, -1 on error
@@ -79,10 +84,7 @@ impl Preferences {
     }
 
     /// Search all domains for keys or values containing the given word (case-insensitive).
-    pub async fn find(
-        word: &str,
-    ) -> Result<std::collections::BTreeMap<String, Vec<FindMatch>>, PrefError> {
-        use std::collections::BTreeMap;
+    pub async fn find(word: &str) -> Result<BTreeMap<String, Vec<FindMatch>>, PrefError> {
         let word_lower = word.to_lowercase();
         let mut results: BTreeMap<String, Vec<FindMatch>> = BTreeMap::new();
         let domains = Self::list_domains().await?;
@@ -220,28 +222,6 @@ impl Preferences {
                     .collect(),
             ),
         }
-    }
-
-    /// Batch write multiple keys for domains concurrently.
-    pub async fn write_batch(
-        batch: Vec<(Domain, Vec<(String, PrefValue)>)>,
-    ) -> Result<(), PrefError> {
-        let tasks = batch.into_iter().map(|(domain, writes)| async move {
-            let path = Self::domain_path(&domain);
-            let (mut plist, orig_owner) = Self::load_plist(&path).await?;
-            if let PlistValue::Dictionary(ref mut dict) = plist {
-                for (key, value) in writes {
-                    dict.insert(key, Self::to_plist_value(&value));
-                }
-            } else {
-                return Err(PrefError::InvalidType);
-            }
-            Self::save_plist(&path, &plist, orig_owner).await
-        });
-        for res in join_all(tasks).await {
-            res?;
-        }
-        Ok(())
     }
 
     /// Delete a key from the given domain.
@@ -424,6 +404,135 @@ impl Preferences {
         } else {
             format!("\"{}\"", s.replace('"', "\\\""))
         }
+    }
+
+    /// Batch-write multiple key–value pairs for domains concurrently.
+    ///
+    /// The input is a vector of tuples `(Domain, String, PrefValue)`. For each unique domain,
+    /// the write requests are merged and applied in a single I/O operation. This function updates only
+    /// the designated keys in the plist, rather than replacing the entire domain.
+    pub async fn write_batch(batch: Vec<(Domain, String, PrefValue)>) -> Result<(), PrefError> {
+        let mut groups: HashMap<Domain, Vec<(String, PrefValue)>> = HashMap::new();
+        // Group write requests by domain.
+        for (domain, key, value) in batch {
+            groups.entry(domain).or_default().push((key, value));
+        }
+        let tasks = groups.into_iter().map(|(domain, writes)| async move {
+            let path = Self::domain_path(&domain);
+            let (mut plist, orig_owner) = Self::load_plist(&path).await?;
+            if let PlistValue::Dictionary(ref mut dict) = plist {
+                for (key, value) in writes {
+                    dict.insert(key, Self::to_plist_value(&value));
+                }
+            } else {
+                return Err(PrefError::InvalidType);
+            }
+            Self::save_plist(&path, &plist, orig_owner).await
+        });
+        for res in join_all(tasks).await {
+            res?;
+        }
+        Ok(())
+    }
+
+    /// Batch-read multiple keys for domains concurrently.
+    ///
+    /// For each unique domain in the provided batch, this method reads the entire plist concurrently
+    /// and then extracts the requested key(s). If a request specifies `None` for the key,
+    /// the entire domain plist is returned; otherwise, the key's value is returned.
+    ///
+    /// Returns a vector of tuples `(Domain, Option<String>, ReadResult)` where the:
+    /// - `Domain` is the domain read,
+    /// - `Option<String>` is the key used (or `None` for the entire domain),
+    /// - `ReadResult` is either the value at that key or the full plist.
+    pub async fn read_batch(
+        batch: Vec<(Domain, Option<String>)>,
+    ) -> Result<Vec<(Domain, Option<String>, ReadResult)>, PrefError> {
+        let mut groups: HashMap<Domain, Vec<Option<String>>> = HashMap::new();
+
+        // Group requests by domain.
+        for (domain, key) in batch {
+            groups.entry(domain).or_default().push(key);
+        }
+
+        // Spawn concurrent futures to process each domain.
+        let futures = groups.into_iter().map(|(domain, keys)| async move {
+            let (plist, _) = Self::read_internal(&domain).await?;
+            let mut res = Vec::new();
+            for key in keys {
+                match key.as_deref() {
+                    None => res.push((domain.clone(), None, ReadResult::Plist(plist.clone()))),
+                    Some(k) => {
+                        if let PlistValue::Dictionary(ref dict) = plist {
+                            if let Some(val) = dict.get(k) {
+                                res.push((
+                                    domain.clone(),
+                                    Some(k.to_string()),
+                                    ReadResult::Value(convert(val)),
+                                ));
+                            } else {
+                                return Err(PrefError::KeyNotFound);
+                            }
+                        } else {
+                            return Err(PrefError::InvalidType);
+                        }
+                    }
+                }
+            }
+            Ok::<Vec<(Domain, Option<String>, ReadResult)>, PrefError>(res)
+        });
+
+        // Execute all domain reads concurrently.
+        let grouped_results: Result<Vec<Vec<(Domain, Option<String>, ReadResult)>>, _> =
+            futures::future::join_all(futures)
+                .await
+                .into_iter()
+                .collect();
+        Ok(grouped_results?.into_iter().flatten().collect())
+    }
+
+    /// Batch-delete multiple keys for domains concurrently.
+    ///
+    /// For each unique domain in the provided batch, this method loads the plist concurrently.
+    /// If any request for a domain has a key of `None`, the entire domain file is deleted.
+    /// Otherwise, the specified keys are removed from the domain.
+    pub async fn delete_batch(batch: Vec<(Domain, Option<String>)>) -> Result<(), PrefError> {
+        let mut groups: HashMap<Domain, Vec<Option<String>>> = HashMap::new();
+
+        // Group requests by domain.
+        for (domain, key) in batch {
+            groups.entry(domain).or_default().push(key);
+        }
+
+        // Spawn concurrent futures to process each domain deletion.
+        let futures = groups.into_iter().map(|(domain, keys)| async move {
+            if keys.iter().any(|k| k.is_none()) {
+                // If any key is None, delete the entire domain.
+                Self::delete(domain.clone(), None).await
+            } else {
+                let path = Self::domain_path(&domain);
+                let (mut plist, orig_owner) = Self::load_plist(&path).await?;
+                if let PlistValue::Dictionary(ref mut dict) = plist {
+                    for key in keys {
+                        if let Some(k) = key {
+                            if dict.remove(&k).is_none() {
+                                return Err(PrefError::KeyNotFound);
+                            }
+                        }
+                    }
+                } else {
+                    return Err(PrefError::InvalidType);
+                }
+                Self::save_plist(&path, &plist, orig_owner).await
+            }
+        });
+
+        // Execute all deletions concurrently.
+        futures::future::join_all(futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(())
     }
 }
 

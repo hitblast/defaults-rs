@@ -182,23 +182,45 @@ For writing domains in batches, you can use the batch-write function:
 use defaults_rs::{Domain, PrefValue, Preferences};
 
 #[tokio::main]
-async fn main() {
-    let batch = vec![
-        (
-            Domain::User("com.apple.dock".into()),
+async fn main() -> anyhow::Result<()> {
+    // Batch write (using write_batch_optional):
+    let write_batch = vec![
+        // For com.apple.dock, update two keys.
+        (Domain::User("com.apple.dock".into()), Some("tilesize".into()), PrefValue::Integer(48)),
+        (Domain::User("com.apple.dock".into()), Some("autohide".into()), PrefValue::Boolean(true)),
+
+        // For com.apple.finder, override the entire domain.
+        (Domain::User("com.apple.finder".into()), None, PrefValue::Dictionary(
             vec![
-                ("tilesize".into(), PrefValue::Integer(48)),
-                ("autohide".into(), PrefValue::Boolean(true)),
-            ],
-        ),
-        (
-            Domain::User("com.apple.keyboard".into()),
-            vec![
-                ("InitialKeyRepeat".into(), PrefValue::Integer(25)),
-            ],
-        ),
+                ("ShowStatusBar".into(), PrefValue::Boolean(true)),
+                ("DesktopViewOptions".into(), PrefValue::String("grid".into())),
+            ].into_iter().collect()
+        )),
     ];
-    Preferences::write_batch(batch).await.unwrap();
+    Preferences::write_batch_optional(write_batch).await?;
+
+    // Batch read:
+    let read_batch = vec![
+        (Domain::User("com.apple.dock".into()), Some("tilesize".into())),
+        (Domain::User("com.apple.finder".into()), None), // Read entire domain
+    ];
+    let results = Preferences::read_batch(read_batch).await?;
+    for (domain, key, result) in results {
+        match key {
+            None => println!("Domain: {:?}, Full plist: {:?}", domain, result),
+            Some(k) => println!("Domain: {:?}, Key: {:?}, Value: {:?}", domain, k, result),
+        }
+    }
+
+    // Batch delete:
+    let delete_batch = vec![
+        (Domain::User("com.apple.dock".into()), Some("tilesize".into())),
+        (Domain::User("com.apple.dock".into()), Some("autohide".into())),
+        (Domain::User("com.apple.keyboard".into()), None), // Delete entire domain file
+    ];
+    Preferences::delete_batch(delete_batch).await?;
+
+    Ok(())
 }
 ```
 
