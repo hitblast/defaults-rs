@@ -21,7 +21,7 @@ fn parse_domain(sub_m: &ArgMatches) -> Domain {
     }
 }
 
-// Helper to print Ok(()) or error
+// Helper to print Ok(()) or error.
 fn print_result<T, E: std::fmt::Display>(res: Result<T, E>)
 where
     T: std::fmt::Debug,
@@ -95,7 +95,7 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
                 "write" => {
                     let key = get_required_arg(sub_m, "key");
 
-                    // Detect which type flag was used and get the value
+                    // Detect which type flag was used and get the value.
                     let (type_flag, value_str) = if let Some(val) = sub_m.get_one::<String>("int") {
                         ("int", val)
                     } else if let Some(val) = sub_m.get_one::<String>("float") {
