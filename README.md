@@ -176,33 +176,25 @@ async fn main() {
 }
 ```
 
-For writing domains in batches, you can use the batch-write function:
+The API also provides unified batch functions which can significantly reduce the amount of I/O per read/write/delete if you want to do multiple queries.
 
 ```rust
 use defaults_rs::{Domain, PrefValue, Preferences};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Batch write (using write_batch_optional):
+    // Batch write (only updates designated keys)
     let write_batch = vec![
-        // For com.apple.dock, update two keys.
-        (Domain::User("com.apple.dock".into()), Some("tilesize".into()), PrefValue::Integer(48)),
-        (Domain::User("com.apple.dock".into()), Some("autohide".into()), PrefValue::Boolean(true)),
-
-        // For com.apple.finder, override the entire domain.
-        (Domain::User("com.apple.finder".into()), None, PrefValue::Dictionary(
-            vec![
-                ("ShowStatusBar".into(), PrefValue::Boolean(true)),
-                ("DesktopViewOptions".into(), PrefValue::String("grid".into())),
-            ].into_iter().collect()
-        )),
+        (Domain::User("com.apple.dock".into()), "tilesize".into(), PrefValue::Integer(48)),
+        (Domain::User("com.apple.dock".into()), "autohide".into(), PrefValue::Boolean(true)),
+        (Domain::User("com.apple.keyboard".into()), "InitialKeyRepeat".into(), PrefValue::Integer(25)),
     ];
-    Preferences::write_batch_optional(write_batch).await?;
+    Preferences::write_batch(write_batch).await?;
 
     // Batch read:
     let read_batch = vec![
         (Domain::User("com.apple.dock".into()), Some("tilesize".into())),
-        (Domain::User("com.apple.finder".into()), None), // Read entire domain
+        (Domain::User("com.apple.keyboard".into()), None), // Read entire domain
     ];
     let results = Preferences::read_batch(read_batch).await?;
     for (domain, key, result) in results {
