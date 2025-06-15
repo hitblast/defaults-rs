@@ -32,7 +32,7 @@ pub struct Preferences;
 impl Preferences {
     /// Loads the plist for the specified path.
     async fn load_plist(path: &PathBuf) -> Result<LoadedPlist, PrefError> {
-        let orig_owner = std::fs::metadata(path).ok().map(|m| (m.uid(), m.gid()));
+        let orig_owner = fs::metadata(path).await.ok().map(|m| (m.uid(), m.gid()));
 
         let (plist, is_binary) = if fs::metadata(path).await.is_ok() {
             let mut file = File::open(path).await.map_err(PrefError::Io)?;
@@ -86,7 +86,7 @@ impl Preferences {
         }
 
         // capture original file mode permissions
-        let orig_perm = std::fs::metadata(path).ok().map(|m| m.permissions());
+        let orig_perm = fs::metadata(path).await.ok().map(|m| m.permissions());
 
         // create temporary file in the same directory
         let dir = path
@@ -361,7 +361,8 @@ impl Preferences {
     /// Replaces any existing file for the domain.
     pub async fn import(domain: Domain, import_path: &str) -> Result<(), PrefError> {
         let dest_path = Self::domain_path(&domain);
-        let orig_owner = std::fs::metadata(&dest_path)
+        let orig_owner = fs::metadata(&dest_path)
+            .await
             .ok()
             .map(|m| (m.uid(), m.gid()));
         fs::copy(import_path, &dest_path)
