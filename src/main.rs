@@ -15,8 +15,8 @@ async fn main() {
 
 fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
     use std::path::PathBuf;
-    let target = sub_m.get_one::<String>("target").expect("target required");
-    let path = PathBuf::from(target);
+    let domain = sub_m.get_one::<String>("domain").expect("domain required");
+    let path = PathBuf::from(domain);
 
     // Try as-is
     if path.exists() {
@@ -32,7 +32,7 @@ fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
     }
 
     // Fallback to domain logic
-    match target.as_str() {
+    match domain.as_str() {
         "-g" | "NSGlobalDomain" | "-globalDomain" => Domain::Global,
         other => {
             if other.contains("..")
