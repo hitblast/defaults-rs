@@ -33,7 +33,7 @@ pub fn build_cli() -> Command {
                         .long("int")
                         .num_args(1)
                         .value_name("VALUE")
-                        .conflicts_with_all(&["float", "bool", "string"]),
+                        .conflicts_with_all(["float", "bool", "string"]),
                 )
                 .arg(
                     Arg::new("float")
@@ -42,7 +42,7 @@ pub fn build_cli() -> Command {
                         .long("float")
                         .num_args(1)
                         .value_name("VALUE")
-                        .conflicts_with_all(&["int", "bool", "string"]),
+                        .conflicts_with_all(["int", "bool", "string"]),
                 )
                 .arg(
                     Arg::new("bool")
@@ -51,7 +51,7 @@ pub fn build_cli() -> Command {
                         .long("bool")
                         .num_args(1)
                         .value_name("VALUE")
-                        .conflicts_with_all(&["int", "float", "string"]),
+                        .conflicts_with_all(["int", "float", "string"]),
                 )
                 .arg(
                     Arg::new("string")
@@ -60,7 +60,7 @@ pub fn build_cli() -> Command {
                         .long("string")
                         .num_args(1)
                         .value_name("VALUE")
-                        .conflicts_with_all(&["int", "float", "bool"]),
+                        .conflicts_with_all(["int", "float", "bool"]),
                 ),
         )
         .subcommand(

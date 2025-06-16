@@ -30,23 +30,26 @@ static HOME: Lazy<String> =
 pub struct Preferences;
 
 impl Preferences {
-    /// Loads the plist for the specified path.
+    /// loads the plist for the specified path.
     async fn load_plist(path: &PathBuf) -> Result<LoadedPlist, PrefError> {
-        let orig_owner = fs::metadata(path).await.ok().map(|m| (m.uid(), m.gid()));
+        let metadata = fs::metadata(path).await;
+        let orig_owner = metadata.as_ref().ok().map(|m| (m.uid(), m.gid()));
 
-        let (plist, is_binary) = if fs::metadata(path).await.is_ok() {
+        let (plist, is_binary) = if metadata.is_ok() {
             let mut file = File::open(path).await.map_err(PrefError::Io)?;
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
-            match PlistValue::from_reader_xml(Cursor::new(&buf[..])) {
-                Ok(plist) => (plist, false),
-                Err(_) => {
-                    let plist = PlistValue::from_reader(Cursor::new(&buf[..]))
-                        .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
-                    (plist, true)
-                }
+
+            // try to parse as XML first, and if that fails, fallback to another format
+            if let Ok(plist) = PlistValue::from_reader_xml(Cursor::new(&buf[..])) {
+                (plist, false)
+            } else {
+                let plist = PlistValue::from_reader(Cursor::new(&buf[..]))
+                    .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
+                (plist, true)
             }
         } else {
+            // file does not exist, return a new empty dictionary value.
             (PlistValue::Dictionary(plist::Dictionary::new()), false)
         };
 
@@ -64,16 +67,19 @@ impl Preferences {
         orig_owner: Option<(u32, u32)>,
         is_binary: bool,
     ) -> Result<(), PrefError> {
-        // acquire exclusive lock on target file
+        // acquire an exclusive lock on the file if possible.
         let lock_file = std::fs::OpenOptions::new().read(true).open(path);
         let mut guard_fd = None;
-        if let Ok(f) = lock_file {
-            let fd = f.as_raw_fd();
-            unsafe { libc::flock(fd, libc::LOCK_EX) };
-            guard_fd = Some(f);
+        if let Ok(file) = lock_file {
+            let fd = file.as_raw_fd();
+            // safety: use `flock` to ensure exclusive access to the file while writing
+            unsafe {
+                libc::flock(fd, libc::LOCK_EX);
+            }
+            guard_fd = Some(file);
         }
 
-        // prepare buffer
+        // prepare the buffer by writing the plist in the requested format
         let mut buf = Vec::new();
         if is_binary {
             plist
@@ -85,42 +91,50 @@ impl Preferences {
                 .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
         }
 
-        // capture original file mode permissions
+        // capture original file permissions
         let orig_perm = fs::metadata(path).await.ok().map(|m| m.permissions());
 
-        // create temporary file in the same directory
+        // retrieve directory and file_name from the path
         let dir = path
             .parent()
-            .ok_or_else(|| PrefError::Other("Invalid path".into()))?;
-        let fname = path
+            .ok_or_else(|| PrefError::Other("Invalid path: no parent directory".into()))?;
+        let file_name = path
             .file_name()
-            .ok_or_else(|| PrefError::Other("Invalid path".into()))?;
-        let tmp_name = format!("{}.tmp", fname.to_string_lossy());
-        let tmp_path = dir.join(tmp_name);
+            .ok_or_else(|| PrefError::Other("Invalid path: no file name".into()))?;
+
+        // create the temporary file path
+        let tmp_file_name = format!("{}.tmp", file_name.to_string_lossy());
+        let tmp_path = dir.join(tmp_file_name);
+
+        // write the buffer to a temporary file
         let mut tmp_file = File::create(&tmp_path).await.map_err(PrefError::Io)?;
         tmp_file.write_all(&buf).await.map_err(PrefError::Io)?;
         tmp_file.flush().await.map_err(PrefError::Io)?;
 
-        // restore ownership on temp file if needed
+        // restore ownership on the temporary file, if required
         if let Some((uid, gid)) = orig_owner {
             let _ = Self::restore_ownership(&tmp_path, uid, gid);
         }
 
-        // atomically replace original file
+        // atomically replace the original file with the temporary file
         tokio::fs::rename(&tmp_path, path)
             .await
             .map_err(PrefError::Io)?;
 
-        // preserve original mode bits
+        // restore the original permissions if they were captured
         if let Some(perm) = orig_perm {
             std::fs::set_permissions(path, perm).map_err(PrefError::Io)?;
         }
 
-        // release file lock
-        if let Some(f) = guard_fd {
-            let fd = f.as_raw_fd();
-            unsafe { libc::flock(fd, libc::LOCK_UN) };
+        // release the file lock if acquired
+        if let Some(file) = guard_fd {
+            let fd = file.as_raw_fd();
+            // safety: Matching the previous flock, we unlock the file
+            unsafe {
+                libc::flock(fd, libc::LOCK_UN);
+            }
         }
+
         Ok(())
     }
 
@@ -509,6 +523,7 @@ impl Preferences {
     /// - `Domain` is the domain read,
     /// - `Option<String>` is the key used (or `None` for the entire domain),
     /// - `ReadResult` is either the value at that key or the full plist.
+    #[allow(clippy::type_complexity)]
     pub async fn read_batch(
         batch: Vec<(Domain, Option<String>)>,
     ) -> Result<Vec<(Domain, Option<String>, ReadResult)>, PrefError> {
@@ -523,28 +538,32 @@ impl Preferences {
         let futures = groups.into_iter().map(|(domain, keys)| async move {
             let loaded = Self::read_internal(&domain).await?;
             let plist = loaded.plist;
-            let mut res = Vec::new();
-            for key in keys {
-                match key.as_deref() {
-                    None => res.push((domain.clone(), None, ReadResult::Plist(plist.clone()))),
-                    Some(k) => {
-                        if let PlistValue::Dictionary(ref dict) = plist {
-                            if let Some(val) = dict.get(k) {
-                                res.push((
-                                    domain.clone(),
-                                    Some(k.to_string()),
-                                    ReadResult::Value(convert(val)),
-                                ));
-                            } else {
-                                return Err(PrefError::KeyNotFound);
-                            }
-                        } else {
-                            return Err(PrefError::InvalidType);
+
+            // process each key for the current domain
+            let results: Result<Vec<_>, PrefError> = keys
+                .into_iter()
+                .map(|opt_key| {
+                    match opt_key.as_deref() {
+                        None => Ok((domain.clone(), None, ReadResult::Plist(plist.clone()))),
+                        Some(k) => {
+                            // ensure the plist is a dictionary
+                            let dict = match plist {
+                                PlistValue::Dictionary(ref d) => d,
+                                _ => return Err(PrefError::InvalidType),
+                            };
+                            // look up the value and return an error if not found
+                            let val = dict.get(k).ok_or(PrefError::KeyNotFound)?;
+                            Ok((
+                                domain.clone(),
+                                Some(k.to_string()),
+                                ReadResult::Value(convert(val)),
+                            ))
                         }
                     }
-                }
-            }
-            Ok::<Vec<(Domain, Option<String>, ReadResult)>, PrefError>(res)
+                })
+                .collect();
+
+            results
         });
 
         // Execute all domain reads concurrently.
@@ -555,7 +574,6 @@ impl Preferences {
                 .collect();
         Ok(grouped_results?.into_iter().flatten().collect())
     }
-
     /// Batch-delete multiple keys for domains concurrently.
     ///
     /// For each unique domain in the provided batch, this method loads the plist concurrently.
@@ -578,11 +596,9 @@ impl Preferences {
                 let path = Self::domain_path(&domain);
                 let mut loaded = Self::load_plist(&path).await?;
                 if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
-                    for key in keys {
-                        if let Some(k) = key {
-                            if dict.remove(&k).is_none() {
-                                return Err(PrefError::KeyNotFound);
-                            }
+                    for k in keys.into_iter().flatten() {
+                        if dict.remove(&k).is_none() {
+                            return Err(PrefError::KeyNotFound);
                         }
                     }
                 } else {
