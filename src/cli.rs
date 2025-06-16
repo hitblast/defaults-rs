@@ -11,19 +11,19 @@ pub fn build_cli() -> Command {
         .arg_required_else_help(true)
         .subcommand(
             Command::new("read")
-                .about("Read a value from preferences")
+                .about("Read a value from domain/plist")
                 .arg(domain_arg())
                 .arg(key_arg(false)),
         )
         .subcommand(
             Command::new("read-type")
-                .about("Show the type for the given domain and key")
+                .about("Show the type for the given domain/plist path and key")
                 .arg(domain_arg())
                 .arg(key_arg(true)),
         )
         .subcommand(
             Command::new("write")
-                .about("Write a value to preferences")
+                .about("Write a value to domain/plist")
                 .arg(domain_arg())
                 .arg(key_arg(true))
                 .arg(
@@ -65,13 +65,13 @@ pub fn build_cli() -> Command {
         )
         .subcommand(
             Command::new("delete")
-                .about("Delete a key or domain from preferences")
+                .about("Delete a key or domain/plist")
                 .arg(domain_arg())
                 .arg(key_arg(false)),
         )
         .subcommand(
             Command::new("rename")
-                .about("Rename a key in preferences")
+                .about("Rename a key in a domain/plist")
                 .arg(domain_arg())
                 .arg(
                     Arg::new("old_key")
@@ -88,13 +88,13 @@ pub fn build_cli() -> Command {
         )
         .subcommand(
             Command::new("import")
-                .about("Import a plist file into a domain")
+                .about("Import a plist file")
                 .arg(domain_arg())
                 .arg(path_arg()),
         )
         .subcommand(
             Command::new("export")
-                .about("Export a domain to a plist file")
+                .about("Export a domain/plist to a plist file")
                 .arg(domain_arg())
                 .arg(path_arg()),
         )
@@ -113,7 +113,7 @@ pub fn build_cli() -> Command {
 
 fn domain_arg() -> Arg {
     Arg::new("domain")
-        .help("Domain (e.g. com.apple.dock). Use '-g' or 'NSGlobalDomain' for global domain")
+        .help("Domain (e.g. com.apple.dock), or the path to a plist file. Use '-g' or 'NSGlobalDomain' for global domain")
         .required(true)
         .index(1)
         .allow_hyphen_values(true)

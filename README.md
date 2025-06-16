@@ -11,8 +11,6 @@ Near drop-in replacement for the macOS `defaults` CLI with API bindings for Rust
 > [!IMPORTANT]
 > Consider starring the project if you like it! It really supports and motivates me to make more projects like these.
 
----
-
 ## Table of Contents
 
 - [Key Features](#key-features)
@@ -21,18 +19,15 @@ Near drop-in replacement for the macOS `defaults` CLI with API bindings for Rust
 - [Rust API](#rust-api)
 - [License](#license)
 
----
-
 ## Key Features
 
-- **CLI (`drs`)**: Use it as a direct replacement for `defaults` without hassle.
-- **Async Rust API**: Read, write, delete, rename, import/export, and inspect preferences from Rust code.
-- **Supports**: User and global domains, all plist value types (int, float, bool, string, arrays, dictionaries).
-- **Familiar Style**: Pretty-prints plist data close to the original `defaults` format.
-- **Binary & XML Plist**: Handles both binary and XML plist files transparently.
-- **Extensible**: Designed for easy addition of new commands and value types.
-
----
+- Use it as a **direct replacement** for `defaults` without hassle.
+- Read, write, delete, rename, import/export, and inspect preferences using the built-in **async Rust API**.
+- Supports user and global **domains**, or any plist **file path**.
+- Supports **all plist value types** (int, float, bool, string, arrays, dictionaries).
+- Pretty-prints plist data close to the original `defaults` format.
+- Handles both binary and XML plist files transparently.
+- Extensible.
 
 ## Installation
 
@@ -64,38 +59,44 @@ $ mise use -g cargo:defaults-rs
 $ cargo install --git https://github.com/hitblast/defaults-rs
 ```
 
----
-
 ## CLI Usage
 
 The CLI command is `drs`. It closely mimics the original `defaults` tool.
 
 ### Examples
 
-#### Read a key
+#### Read a key (domain or path)
 
 ```sh
 $ drs read com.apple.dock tilesize
+$ drs read ~/Library/Preferences/com.apple.dock.plist tilesize
+$ drs read ./custom.plist mykey
+$ drs read com.apple.dock.plist tilesize   # if file exists, treated as path; else as domain
 ```
 
 #### Write a key
 
 ```sh
 $ drs write com.apple.dock tilesize -i 48
-# or
 $ drs write com.apple.dock tilesize --int 48
+$ drs write ~/Library/Preferences/com.apple.dock.plist tilesize --int 48
+$ drs write ./custom.plist mykey --string "hello"
 ```
 
 #### Delete a key
 
 ```sh
 $ drs delete com.apple.dock tilesize
+$ drs delete ~/Library/Preferences/com.apple.dock.plist tilesize
+$ drs delete ./custom.plist mykey
 ```
 
 #### Read the whole domain
 
 ```sh
 $ drs read com.apple.dock
+$ drs read ~/Library/Preferences/com.apple.dock.plist
+$ drs read ./custom.plist
 ```
 
 #### List all entries in all domains containing word
@@ -127,16 +128,16 @@ $ drs read-type com.apple.dock tilesize
 
 ```sh
 $ drs rename com.apple.dock oldKey newKey
+$ drs rename ~/Library/Preferences/com.apple.dock.plist oldKey newKey
+$ drs rename ./custom.plist oldKey newKey
 ```
 
-#### Import/Export a domain
+#### Import/export a domain
 
 ```sh
 $ drs import com.apple.dock ./mysettings.plist
 $ drs export com.apple.dock ./backup.plist
 ```
-
----
 
 ## Rust API
 
@@ -215,8 +216,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 ```
-
----
 
 ## License
 

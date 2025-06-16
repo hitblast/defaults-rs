@@ -393,6 +393,7 @@ impl Preferences {
             Domain::User(name) => {
                 PathBuf::from(format!("{}/Library/Preferences/{}.plist", &*HOME, name))
             }
+            Domain::Path(path) => path.clone(),
         }
     }
 

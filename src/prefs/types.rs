@@ -12,6 +12,8 @@ pub enum Domain {
     User(String),
     /// The global preferences domain (".GlobalPreferences")
     Global,
+    /// A direct path to a plist file
+    Path(std::path::PathBuf),
 }
 
 /// Value stored in preferences.

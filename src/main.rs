@@ -13,9 +13,26 @@ async fn main() {
     }
 }
 
-fn parse_domain(sub_m: &ArgMatches) -> Domain {
-    let dom = sub_m.get_one::<String>("domain").expect("domain required");
-    match dom.as_str() {
+fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
+    use std::path::PathBuf;
+    let target = sub_m.get_one::<String>("target").expect("target required");
+    let path = PathBuf::from(target);
+
+    // Try as-is
+    if path.exists() {
+        return Domain::Path(path);
+    }
+    // Try with .plist extension if not already present
+    if path.extension().and_then(|e| e.to_str()) != Some("plist") {
+        let mut with_ext = path.clone();
+        with_ext.set_extension("plist");
+        if with_ext.exists() {
+            return Domain::Path(with_ext);
+        }
+    }
+
+    // Fallback to domain logic
+    match target.as_str() {
         "-g" | "NSGlobalDomain" | "-globalDomain" => Domain::Global,
         other => {
             if other.contains("..")
@@ -25,7 +42,7 @@ fn parse_domain(sub_m: &ArgMatches) -> Domain {
                     .chars()
                     .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
             {
-                eprintln!("Error: invalid domain name: {}", other);
+                eprintln!("Error: invalid domain or plist path: {}", other);
                 std::process::exit(1);
             }
             Domain::User(other.to_string())
@@ -81,7 +98,7 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
             }
         }
         _ => {
-            let domain = parse_domain(sub_m);
+            let domain = parse_domain_or_path(sub_m);
             match cmd {
                 "read" => {
                     let key = sub_m.get_one::<String>("key").map(String::as_str);
@@ -99,7 +116,7 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
                     match Preferences::read(domain, Some(key)).await {
                         Ok(ReadResult::Value(val)) => println!("{}", val.type_name()),
                         Ok(ReadResult::Plist(_)) => {
-                            eprintln!("Error: read-type expects a key, not a whole domain")
+                            eprintln!("Error: read-type expects a key, not a whole domain or plist")
                         }
                         Err(e) => eprintln!("Error: {e}"),
                     }
