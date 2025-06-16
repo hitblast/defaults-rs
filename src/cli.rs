@@ -7,6 +7,7 @@ pub fn build_cli() -> Command {
         .about(
             "Command line interface to a user's defaults. Substitute for original `defaults` CLI.",
         )
+        .version(env!("CARGO_PKG_VERSION"))
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(
