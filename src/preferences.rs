@@ -49,7 +49,7 @@ impl Preferences {
                 (plist, true)
             }
         } else {
-            // file does not exist, return a new empty dictionary value.
+            // file does not exist, return a new empty dictionary value
             (PlistValue::Dictionary(plist::Dictionary::new()), false)
         };
 
@@ -67,7 +67,7 @@ impl Preferences {
         orig_owner: Option<(u32, u32)>,
         is_binary: bool,
     ) -> Result<(), PrefError> {
-        // acquire an exclusive lock on the file if possible.
+        // acquire an exclusive lock on the file if possible
         let lock_file = std::fs::OpenOptions::new().read(true).open(path);
         let mut guard_fd = None;
         if let Ok(file) = lock_file {
@@ -529,12 +529,12 @@ impl Preferences {
     ) -> Result<Vec<(Domain, Option<String>, ReadResult)>, PrefError> {
         let mut groups: HashMap<Domain, Vec<Option<String>>> = HashMap::new();
 
-        // Group requests by domain.
+        // group requests by domain
         for (domain, key) in batch {
             groups.entry(domain).or_default().push(key);
         }
 
-        // Spawn concurrent futures to process each domain.
+        // spawn concurrent futures to process each domain
         let futures = groups.into_iter().map(|(domain, keys)| async move {
             let loaded = Self::read_internal(&domain).await?;
             let plist = loaded.plist;
@@ -566,7 +566,7 @@ impl Preferences {
             results
         });
 
-        // Execute all domain reads concurrently.
+        // execute all domain reads concurrently
         let grouped_results: Result<Vec<Vec<(Domain, Option<String>, ReadResult)>>, _> =
             futures::future::join_all(futures)
                 .await
@@ -582,15 +582,15 @@ impl Preferences {
     pub async fn delete_batch(batch: Vec<(Domain, Option<String>)>) -> Result<(), PrefError> {
         let mut groups: HashMap<Domain, Vec<Option<String>>> = HashMap::new();
 
-        // Group requests by domain.
+        // group requests by domain
         for (domain, key) in batch {
             groups.entry(domain).or_default().push(key);
         }
 
-        // Spawn concurrent futures to process each domain deletion.
+        // spawn concurrent futures to process each domain deletion
         let futures = groups.into_iter().map(|(domain, keys)| async move {
             if keys.iter().any(|k| k.is_none()) {
-                // If any key is None, delete the entire domain.
+                // if any key is None, delete the entire domain
                 Self::delete(domain.clone(), None).await
             } else {
                 let path = Self::domain_path(&domain);
@@ -608,7 +608,7 @@ impl Preferences {
             }
         });
 
-        // Execute all deletions concurrently.
+        // execute all deletions concurrently
         futures::future::join_all(futures)
             .await
             .into_iter()
