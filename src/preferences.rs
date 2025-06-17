@@ -9,10 +9,11 @@ use plist::Value as PlistValue;
 use std::{
     collections::{BTreeMap, HashMap},
     ffi::CString,
+    fs::{Permissions, metadata, set_permissions},
     io::Cursor,
     os::{
         fd::AsRawFd,
-        unix::{ffi::OsStrExt, fs::MetadataExt},
+        unix::{ffi::OsStrExt, fs::MetadataExt, fs::PermissionsExt},
     },
     path::PathBuf,
 };
@@ -143,15 +144,24 @@ impl Preferences {
         path: P,
         uid: u32,
         gid: u32,
-    ) -> std::io::Result<()> {
-        let c_path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
+    ) -> Result<(), PrefError> {
+        // obtain a reference to the path and retrieve its metadata (including permissions)
+        let path_ref = path.as_ref();
+        let meta = metadata(path_ref).map_err(PrefError::Io)?;
+        let orig_mode = meta.permissions().mode();
 
-        // safety: chown is a syscall, returns 0 on success, -1 on error
+        // convert the file path to a null-terminated C string
+        let c_path = CString::new(path_ref.as_os_str().as_bytes())
+            .map_err(|_| PrefError::Other("Invalid file path with interior null byte".into()))?;
+
+        // safety: call libc::chown with a valid C string to change ownership
         let res = unsafe { libc::chown(c_path.as_ptr(), uid as uid_t, gid as gid_t) };
         if res == 0 {
+            // restore the original file mode (permissions)
+            set_permissions(path_ref, Permissions::from_mode(orig_mode)).map_err(PrefError::Io)?;
             Ok(())
         } else {
-            Err(std::io::Error::last_os_error())
+            Err(PrefError::Io(std::io::Error::last_os_error()))
         }
     }
 
@@ -159,19 +169,24 @@ impl Preferences {
     pub async fn find(word: &str) -> Result<BTreeMap<String, Vec<FindMatch>>, PrefError> {
         let word_lower = word.to_lowercase();
         let mut results: BTreeMap<String, Vec<FindMatch>> = BTreeMap::new();
+
         let domains = Self::list_domains().await?;
+
         for domain_name in domains {
             let domain = if domain_name == "NSGlobalDomain" {
                 Domain::Global
             } else {
                 Domain::User(domain_name.clone())
             };
+
             let loaded = match Self::read_internal(&domain).await {
                 Ok(l) => l,
                 Err(_) => continue,
             };
+
             let plist = loaded.plist;
             let mut matches = Vec::new();
+
             Self::find_in_value(&plist, &word_lower, String::new(), &mut matches);
             if !matches.is_empty() {
                 results.insert(domain_name, matches);
