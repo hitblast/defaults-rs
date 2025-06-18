@@ -17,6 +17,7 @@ Near drop-in replacement for the macOS `defaults` CLI with API bindings for Rust
 - [Installation](#installation)
 - [CLI Usage](#cli-usage)
 - [Rust API](#rust-api)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## Key Features
