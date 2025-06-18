@@ -52,8 +52,7 @@ $ mise use -g cargo:defaults-rs
 
 ### Manual Build & Install
 
-> [!NOTE]
-> `defaults-rs` requires Rust **(v1.70 or greater)** to be installed on your machine. Also, builds are only possible on macOS.
+> [!NOTE] > `defaults-rs` requires Rust **(v1.70 or greater)** to be installed on your machine. Also, builds are only possible on macOS.
 
 ```sh
 $ cargo install --git https://github.com/hitblast/defaults-rs
@@ -216,6 +215,10 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 ```
+
+## Contributing
+
+New pull requests and issues are always welcome. Please read the [contribution guidelines](./CONTRIBUTING.md) for more information about certain parts of the codebase and/or how to form a structured pull request.
 
 ## License
 
