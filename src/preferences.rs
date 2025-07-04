@@ -46,7 +46,7 @@ impl Preferences {
                 (plist, false)
             } else {
                 let plist = PlistValue::from_reader(Cursor::new(&buf[..]))
-                    .map_err(|e| PrefError::Other(format!("Plist parse error: {}", e)))?;
+                    .map_err(|e| PrefError::Other(format!("Plist parse error: {e}")))?;
                 (plist, true)
             }
         } else {
@@ -85,11 +85,11 @@ impl Preferences {
         if is_binary {
             plist
                 .to_writer_binary(&mut buf)
-                .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
+                .map_err(|e| PrefError::Other(format!("Plist write error: {e}")))?;
         } else {
             plist
                 .to_writer_xml(&mut buf)
-                .map_err(|e| PrefError::Other(format!("Plist write error: {}", e)))?;
+                .map_err(|e| PrefError::Other(format!("Plist write error: {e}")))?;
         }
 
         // capture original file permissions
@@ -211,7 +211,7 @@ impl Preferences {
                     let new_key_path = if key_path.is_empty() {
                         k.clone()
                     } else {
-                        format!("{}.{}", key_path, k)
+                        format!("{key_path}.{k}")
                     };
                     if contains_word(k, word_lower) {
                         matches.push(FindMatch {
@@ -224,7 +224,7 @@ impl Preferences {
             }
             plist::Value::Array(arr) => {
                 for (i, v) in arr.iter().enumerate() {
-                    let new_key_path = format!("{}[{}]", key_path, i);
+                    let new_key_path = format!("{key_path}[{i}]");
                     Self::find_in_value(v, word_lower, new_key_path, matches);
                 }
             }
@@ -243,12 +243,12 @@ impl Preferences {
     /// Converts a plist Value into a string.
     fn plist_value_to_string(val: &plist::Value) -> String {
         match val {
-            plist::Value::String(s) => format!("{:?}", s),
+            plist::Value::String(s) => format!("{s:?}"),
             plist::Value::Integer(i) => i.as_signed().unwrap_or(0).to_string(),
             plist::Value::Real(f) => f.to_string(),
             plist::Value::Boolean(b) => b.to_string(),
-            plist::Value::Array(_) | plist::Value::Dictionary(_) => format!("{:?}", val),
-            _ => format!("{:?}", val),
+            plist::Value::Array(_) | plist::Value::Dictionary(_) => format!("{val:?}"),
+            _ => format!("{val:?}"),
         }
     }
 
@@ -450,17 +450,17 @@ impl Preferences {
                 print!("{})", ind(indent));
             }
             plist::Value::String(s) => print!("{}", Self::quote_string(s)),
-            plist::Value::Integer(i) => print!("{}", i),
-            plist::Value::Real(f) => print!("{}", f),
+            plist::Value::Integer(i) => print!("{i}"),
+            plist::Value::Real(f) => print!("{f}"),
             plist::Value::Boolean(b) => print!("{}", if *b { "1" } else { "0" }),
-            _ => print!("{:?}", val),
+            _ => print!("{val:?}"),
         }
     }
 
     /// List all available domains in ~/Library/Preferences.
     pub async fn list_domains() -> Result<Vec<String>, PrefError> {
         let home = &*HOME;
-        let prefs_dir = PathBuf::from(format!("{}/Library/Preferences", home));
+        let prefs_dir = PathBuf::from(format!("{home}/Library/Preferences"));
         let mut entries = fs::read_dir(&prefs_dir).await.map_err(PrefError::Io)?;
         let mut domains = Vec::new();
         while let Some(entry) = entries.next_entry().await.map_err(PrefError::Io)? {
@@ -644,6 +644,6 @@ fn convert(val: &PlistValue) -> PrefValue {
         PlistValue::Dictionary(dict) => {
             PrefValue::Dictionary(dict.iter().map(|(k, v)| (k.clone(), convert(v))).collect())
         }
-        _ => PrefValue::String(format!("{:?}", val)),
+        _ => PrefValue::String(format!("{val:?}")),
     }
 }

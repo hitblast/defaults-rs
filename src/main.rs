@@ -45,7 +45,7 @@ async fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
                     .chars()
                     .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
             {
-                eprintln!("Error: invalid domain or plist path: {}", other);
+                eprintln!("Error: invalid domain or plist path: {other}");
                 std::process::exit(1);
             }
             Domain::User(other.to_string())

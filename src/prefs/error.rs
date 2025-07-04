@@ -14,10 +14,10 @@ pub enum PrefError {
 impl fmt::Display for PrefError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PrefError::Io(e) => write!(f, "IO error: {}", e),
+            PrefError::Io(e) => write!(f, "IO error: {e}"),
             PrefError::KeyNotFound => write!(f, "Key not found"),
             PrefError::InvalidType => write!(f, "Invalid type"),
-            PrefError::Other(msg) => write!(f, "{}", msg),
+            PrefError::Other(msg) => write!(f, "{msg}"),
         }
     }
 }
