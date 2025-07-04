@@ -1,7 +1,10 @@
+use std::path::PathBuf;
+
 use clap::ArgMatches;
 use defaults_rs::build_cli;
 use defaults_rs::preferences::Preferences;
 use defaults_rs::{Domain, PrefValue, ReadResult};
+use tokio::fs;
 
 #[tokio::main]
 async fn main() {
@@ -13,15 +16,15 @@ async fn main() {
     }
 }
 
-fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
-    use std::path::PathBuf;
+async fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
     let domain = sub_m.get_one::<String>("domain").expect("domain required");
     let path = PathBuf::from(domain);
 
     // Try as-is
-    if path.exists() {
+    if fs::try_exists(&path).await.unwrap() {
         return Domain::Path(path);
     }
+
     // Try with .plist extension if not already present
     if path.extension().and_then(|e| e.to_str()) != Some("plist") {
         let mut with_ext = path.clone();
@@ -98,7 +101,7 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
             }
         }
         _ => {
-            let domain = parse_domain_or_path(sub_m);
+            let domain = parse_domain_or_path(sub_m).await;
             match cmd {
                 "read" => {
                     let key = sub_m.get_one::<String>("key").map(String::as_str);

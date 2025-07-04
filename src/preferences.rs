@@ -265,6 +265,7 @@ impl Preferences {
     pub async fn read(domain: Domain, key: Option<&str>) -> Result<ReadResult, PrefError> {
         let loaded = Self::read_internal(&domain).await?;
         let plist = loaded.plist;
+
         match key {
             Some(k) => {
                 if let PlistValue::Dictionary(dict) = &plist {
