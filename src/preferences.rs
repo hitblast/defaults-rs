@@ -22,6 +22,21 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 
+/// Backend selection for preferences (File vs CoreFoundation)
+use crate::prefs::core;
+
+enum ActiveBackend {
+    CoreFoundation,
+    File,
+}
+
+static BACKEND: Lazy<ActiveBackend> = Lazy::new(|| {
+    if core::cf_available() {
+        return ActiveBackend::CoreFoundation;
+    }
+    ActiveBackend::File
+});
+
 /// Cached HOME environment variable.
 static HOME: Lazy<String> =
     Lazy::new(|| std::env::var("HOME").expect("HOME environment variable not set"));
@@ -263,6 +278,42 @@ impl Preferences {
     /// If `key` is `None`, returns the entire domain as a `plist::Value`.
     /// If `key` is provided, returns the value at that key as a `PrefValue`.
     pub async fn read(domain: Domain, key: Option<&str>) -> Result<ReadResult, PrefError> {
+        match *BACKEND {
+            ActiveBackend::CoreFoundation => {
+                // For direct file path domains, always fall back.
+                if matches!(domain, Domain::Path(_)) {
+                    return Self::file_read(domain, key).await;
+                }
+
+                // Map domain enum to CF domain string
+                let cf_name = match &domain {
+                    Domain::Global => ".GlobalPreferences",
+                    Domain::User(s) => s.as_str(),
+                    Domain::Path(_) => unreachable!(),
+                };
+                match core::read_pref(cf_name, key) {
+                    Some(pref_val) => {
+                        if let Some(_) = key {
+                            Ok(ReadResult::Value(pref_val))
+                        } else {
+                            // Expect dictionary for whole domain
+                            let plist_val = Self::to_plist_value(&pref_val);
+                            match plist_val {
+                                PlistValue::Dictionary(_) => Ok(ReadResult::Plist(plist_val)),
+                                _ => Err(PrefError::Other(
+                                    "Expected dictionary for whole domain".into(),
+                                )),
+                            }
+                        }
+                    }
+                    None => Err(PrefError::KeyNotFound),
+                }
+            }
+            _ => Self::file_read(domain, key).await,
+        }
+    }
+
+    async fn file_read(domain: Domain, key: Option<&str>) -> Result<ReadResult, PrefError> {
         let loaded = Self::read_internal(&domain).await?;
         let plist = loaded.plist;
 
@@ -286,6 +337,27 @@ impl Preferences {
     /// If the domain file does not exist, it will be created.
     /// If the key already exists, its value will be overwritten.
     pub async fn write(domain: Domain, key: &str, value: PrefValue) -> Result<(), PrefError> {
+        match *BACKEND {
+            ActiveBackend::CoreFoundation => {
+                if matches!(domain, Domain::Path(_)) {
+                    return Self::file_write(domain, key, value).await;
+                }
+                let cf_name = match &domain {
+                    Domain::Global => ".GlobalPreferences",
+                    Domain::User(s) => s.as_str(),
+                    Domain::Path(_) => unreachable!(),
+                };
+                if core::write_pref(cf_name, key, &value) {
+                    Ok(())
+                } else {
+                    Err(PrefError::Other("CFPreferences write failed".into()))
+                }
+            }
+            _ => Self::file_write(domain, key, value).await,
+        }
+    }
+
+    async fn file_write(domain: Domain, key: &str, value: PrefValue) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
         let mut loaded = Self::load_plist(&path).await?;
         if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
@@ -319,6 +391,31 @@ impl Preferences {
     /// If `key` is `None`, deletes the entire domain file.
     /// If `key` is provided, removes the key from the domain plist.
     pub async fn delete(domain: Domain, key: Option<&str>) -> Result<(), PrefError> {
+        match *BACKEND {
+            ActiveBackend::CoreFoundation => {
+                if matches!(domain, Domain::Path(_)) {
+                    return Self::file_delete(domain, key).await;
+                }
+                let cf_name = match &domain {
+                    Domain::Global => ".GlobalPreferences",
+                    Domain::User(s) => s.as_str(),
+                    Domain::Path(_) => unreachable!(),
+                };
+                let ok = match key {
+                    Some(k) => core::delete_key(cf_name, k),
+                    None => core::delete_domain(cf_name),
+                };
+                if ok {
+                    Ok(())
+                } else {
+                    Err(PrefError::Other("CFPreferences delete failed".into()))
+                }
+            }
+            _ => Self::file_delete(domain, key).await,
+        }
+    }
+
+    async fn file_delete(domain: Domain, key: Option<&str>) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
         match key {
             None => {
@@ -372,6 +469,35 @@ impl Preferences {
     ///
     /// Moves the value from `old_key` to `new_key` within the domain plist.
     pub async fn rename(domain: Domain, old_key: &str, new_key: &str) -> Result<(), PrefError> {
+        match *BACKEND {
+            ActiveBackend::CoreFoundation => {
+                if matches!(domain, Domain::Path(_)) {
+                    return Self::file_rename(domain, old_key, new_key).await;
+                }
+                let cf_name = match &domain {
+                    Domain::Global => ".GlobalPreferences",
+                    Domain::User(s) => s.as_str(),
+                    Domain::Path(_) => unreachable!(),
+                };
+                // Read old value
+                let val = core::read_pref(cf_name, Some(old_key)).ok_or(PrefError::KeyNotFound)?;
+                // Write new key
+                if !core::write_pref(cf_name, new_key, &val) {
+                    return Err(PrefError::Other("CFPreferences rename write failed".into()));
+                }
+                // Delete old key
+                if !core::delete_key(cf_name, old_key) {
+                    return Err(PrefError::Other(
+                        "CFPreferences rename delete failed".into(),
+                    ));
+                }
+                Ok(())
+            }
+            _ => Self::file_rename(domain, old_key, new_key).await,
+        }
+    }
+
+    async fn file_rename(domain: Domain, old_key: &str, new_key: &str) -> Result<(), PrefError> {
         let path = Self::domain_path(&domain);
         let mut loaded = Self::load_plist(&path).await?;
         if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
@@ -390,6 +516,50 @@ impl Preferences {
     ///
     /// Replaces any existing file for the domain.
     pub async fn import(domain: Domain, import_path: &str) -> Result<(), PrefError> {
+        match *BACKEND {
+            ActiveBackend::CoreFoundation => {
+                if matches!(domain, Domain::Path(_)) {
+                    return Self::file_import(domain, import_path).await;
+                }
+                // Read plist file (async) then set keys via CF.
+                let data = tokio::fs::read(import_path).await.map_err(PrefError::Io)?;
+                // Try XML first
+                let plist_val =
+                    if let Ok(v) = PlistValue::from_reader_xml(std::io::Cursor::new(&data)) {
+                        v
+                    } else {
+                        PlistValue::from_reader(std::io::Cursor::new(&data))
+                            .map_err(|e| PrefError::Other(format!("Plist parse error: {e}")))?
+                    };
+                let dict = match plist_val {
+                    PlistValue::Dictionary(d) => d,
+                    _ => {
+                        return Err(PrefError::Other(
+                            "Import plist must be a dictionary at root".into(),
+                        ));
+                    }
+                };
+
+                let cf_name = match &domain {
+                    Domain::Global => ".GlobalPreferences",
+                    Domain::User(s) => s.as_str(),
+                    Domain::Path(_) => unreachable!(),
+                };
+                for (k, v) in dict {
+                    let pv = convert(&v);
+                    if !core::write_pref(cf_name, &k, &pv) {
+                        return Err(PrefError::Other(format!(
+                            "Failed to import key `{k}` via CFPreferences"
+                        )));
+                    }
+                }
+                Ok(())
+            }
+            _ => Self::file_import(domain, import_path).await,
+        }
+    }
+
+    async fn file_import(domain: Domain, import_path: &str) -> Result<(), PrefError> {
         let dest_path = Self::domain_path(&domain);
         let orig_owner = fs::metadata(&dest_path)
             .await
@@ -406,6 +576,38 @@ impl Preferences {
 
     /// Export a domain's plist file to the specified path.
     pub async fn export(domain: Domain, export_path: &str) -> Result<(), PrefError> {
+        match *BACKEND {
+            ActiveBackend::CoreFoundation => {
+                if matches!(domain, Domain::Path(_)) {
+                    return Self::file_export(domain, export_path).await;
+                }
+                let cf_name = match &domain {
+                    Domain::Global => ".GlobalPreferences",
+                    Domain::User(s) => s.as_str(),
+                    Domain::Path(_) => unreachable!(),
+                };
+                let pref = core::read_pref(cf_name, None)
+                    .unwrap_or(PrefValue::Dictionary(Default::default()));
+                let plist_val = Self::to_plist_value(&pref);
+                if !matches!(plist_val, PlistValue::Dictionary(_)) {
+                    return Err(PrefError::Other(
+                        "CF export produced non-dictionary root".into(),
+                    ));
+                }
+                // Save using existing atomic writer
+                let path = PathBuf::from(export_path);
+                // Determine original owner if exporting over an existing file
+                let orig_owner = tokio::fs::metadata(&path)
+                    .await
+                    .ok()
+                    .map(|m| (m.uid(), m.gid()));
+                Self::save_plist(&path, &plist_val, orig_owner, false).await
+            }
+            _ => Self::file_export(domain, export_path).await,
+        }
+    }
+
+    async fn file_export(domain: Domain, export_path: &str) -> Result<(), PrefError> {
         let src_path = Self::domain_path(&domain);
         fs::copy(src_path, export_path)
             .await
@@ -459,22 +661,38 @@ impl Preferences {
 
     /// List all available domains in ~/Library/Preferences.
     pub async fn list_domains() -> Result<Vec<String>, PrefError> {
-        let home = &*HOME;
-        let prefs_dir = PathBuf::from(format!("{home}/Library/Preferences"));
-        let mut entries = fs::read_dir(&prefs_dir).await.map_err(PrefError::Io)?;
-        let mut domains = Vec::new();
-        while let Some(entry) = entries.next_entry().await.map_err(PrefError::Io)? {
-            let path = entry.path();
-            if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
-                if fname == ".GlobalPreferences.plist" {
-                    domains.push("NSGlobalDomain".to_string());
-                } else if fname.ends_with(".plist") && !fname.starts_with('.') {
-                    domains.push(fname.trim_end_matches(".plist").to_string());
+        match *BACKEND {
+            ActiveBackend::CoreFoundation => {
+                let mut list =
+                    core::list_domains().map_err(|_| PrefError::Other("CF list failed".into()))?;
+                // Provide NSGlobalDomain alias if global present
+                if list.iter().any(|d| d == ".GlobalPreferences")
+                    && !list.iter().any(|d| d == "NSGlobalDomain")
+                {
+                    list.push("NSGlobalDomain".into());
                 }
+                list.sort();
+                Ok(list)
+            }
+            _ => {
+                let home = &*HOME;
+                let prefs_dir = PathBuf::from(format!("{home}/Library/Preferences"));
+                let mut entries = fs::read_dir(&prefs_dir).await.map_err(PrefError::Io)?;
+                let mut domains = Vec::new();
+                while let Some(entry) = entries.next_entry().await.map_err(PrefError::Io)? {
+                    let path = entry.path();
+                    if let Some(fname) = path.file_name().and_then(|f| f.to_str()) {
+                        if fname == ".GlobalPreferences.plist" {
+                            domains.push("NSGlobalDomain".to_string());
+                        } else if fname.ends_with(".plist") && !fname.starts_with('.') {
+                            domains.push(fname.trim_end_matches(".plist").to_string());
+                        }
+                    }
+                }
+                domains.sort();
+                Ok(domains)
             }
         }
-        domains.sort();
-        Ok(domains)
     }
 
     /// Quotes a key for Apple-style output.
@@ -590,6 +808,7 @@ impl Preferences {
                 .collect();
         Ok(grouped_results?.into_iter().flatten().collect())
     }
+
     /// Batch-delete multiple keys for domains concurrently.
     ///
     /// For each unique domain in the provided batch, this method loads the plist concurrently.

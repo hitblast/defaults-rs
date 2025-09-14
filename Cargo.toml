@@ -1,6 +1,6 @@
 [package]
 name = "defaults-rs"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2024"
 authors = ["HitBlast <hitblastlive@gmail.com>"]
 description = "Near drop-in replacement for the macOS defaults CLI with API bindings for Rust"
@@ -20,6 +20,8 @@ tokio = { version = "1.45", features = ["full"] }
 futures = "0.3.31"
 libc = "0.2"
 once_cell = "1.21.3"
+core-foundation = "0.9"
+core-foundation-sys = "0.8"
 
 [workspace]
 members = [".", "xtask"]
