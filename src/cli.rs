@@ -1,5 +1,12 @@
-//! CLI definition and argument helpers for defaults-rs.
-
+///! CLI definition and argument helpers for defaults-rs.
+///
+/// This module is responsible for:
+/// - Defining the command-line interface (CLI) structure using clap.
+/// - Specifying subcommands, arguments, and their relationships.
+/// - Providing helpers for argument parsing and error reporting (if needed).
+///
+/// No business logic or backend operations are performed here.
+/// All CLI parsing is separated from preferences management and backend details.
 use clap::{Arg, Command};
 
 pub fn build_cli() -> Command {
@@ -110,6 +117,28 @@ pub fn build_cli() -> Command {
                         .index(1),
                 ),
         )
+}
+
+/// Helper to print Ok(()) or error.
+pub fn print_result<T, E: std::fmt::Display>(res: Result<T, E>)
+where
+    T: std::fmt::Debug,
+{
+    match res {
+        Ok(_) => println!("OK"),
+        Err(e) => eprintln!("Error: {e}"),
+    }
+}
+
+/// Helper to get a required argument.
+pub fn get_required_arg<'a>(sub_m: &'a clap::ArgMatches, name: &str) -> &'a str {
+    sub_m
+        .get_one::<String>(name)
+        .map(String::as_str)
+        .unwrap_or_else(|| {
+            eprintln!("Error: {name} required");
+            std::process::exit(1);
+        })
 }
 
 fn domain_arg() -> Arg {

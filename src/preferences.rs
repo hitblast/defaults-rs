@@ -1,3 +1,11 @@
+//! Preferences API for defaults-rs.
+//!
+//! This module implements all business logic for reading, writing, deleting, importing/exporting,
+//! batch operations, and pretty-printing macOS preferences (plist files).
+//!
+//! It acts as the main interface between the CLI/library and the backend (CoreFoundation or file-based).
+//! No CLI parsing or user interaction is performed here; all logic is asynchronous and platform-agnostic.
+
 use crate::prefs::{
     error::PrefError,
     types::{Domain, FindMatch, LoadedPlist, PrefValue, ReadResult},
@@ -22,20 +30,11 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 
-/// Backend selection for preferences (File vs CoreFoundation)
-use crate::prefs::core;
-
-enum ActiveBackend {
-    CoreFoundation,
-    File,
-}
-
-static BACKEND: Lazy<ActiveBackend> = Lazy::new(|| {
-    if core::cf_available() {
-        return ActiveBackend::CoreFoundation;
-    }
-    ActiveBackend::File
-});
+/// Backend selection for preferences (CoreFoundation vs File)
+use crate::prefs::{
+    backend::{ActiveBackend, BACKEND},
+    core,
+};
 
 /// Cached HOME environment variable.
 static HOME: Lazy<String> =
@@ -46,7 +45,7 @@ static HOME: Lazy<String> =
 pub struct Preferences;
 
 impl Preferences {
-    /// loads the plist for the specified path.
+    // Loads the plist from the given path.
     async fn load_plist(path: &PathBuf) -> Result<LoadedPlist, PrefError> {
         let metadata = fs::metadata(path).await;
         let orig_owner = metadata.as_ref().ok().map(|m| (m.uid(), m.gid()));
@@ -231,7 +230,7 @@ impl Preferences {
                     if contains_word(k, word_lower) {
                         matches.push(FindMatch {
                             key_path: new_key_path.clone(),
-                            value: Self::plist_value_to_string(v),
+                            value: convert_plist_value_to_string(v),
                         });
                     }
                     Self::find_in_value(v, word_lower, new_key_path, matches);
@@ -244,7 +243,7 @@ impl Preferences {
                 }
             }
             _ => {
-                let val_str = Self::plist_value_to_string(val);
+                let val_str = convert_plist_value_to_string(val);
                 if contains_word(&val_str, word_lower) {
                     matches.push(FindMatch {
                         key_path,
@@ -252,18 +251,6 @@ impl Preferences {
                     });
                 }
             }
-        }
-    }
-
-    /// Converts a plist Value into a string.
-    fn plist_value_to_string(val: &plist::Value) -> String {
-        match val {
-            plist::Value::String(s) => format!("{s:?}"),
-            plist::Value::Integer(i) => i.as_signed().unwrap_or(0).to_string(),
-            plist::Value::Real(f) => f.to_string(),
-            plist::Value::Boolean(b) => b.to_string(),
-            plist::Value::Array(_) | plist::Value::Dictionary(_) => format!("{val:?}"),
-            _ => format!("{val:?}"),
         }
     }
 
@@ -297,7 +284,7 @@ impl Preferences {
                             Ok(ReadResult::Value(pref_val))
                         } else {
                             // Expect dictionary for whole domain
-                            let plist_val = Self::to_plist_value(&pref_val);
+                            let plist_val = convert_pref_value_to_plist_value(&pref_val);
                             match plist_val {
                                 PlistValue::Dictionary(_) => Ok(ReadResult::Plist(plist_val)),
                                 _ => Err(PrefError::Other(
@@ -321,7 +308,7 @@ impl Preferences {
             Some(k) => {
                 if let PlistValue::Dictionary(dict) = &plist {
                     match dict.get(k) {
-                        Some(val) => Ok(ReadResult::Value(convert(val))),
+                        Some(val) => Ok(ReadResult::Value(convert_plist_value_to_pref_value(val))),
                         None => Err(PrefError::KeyNotFound),
                     }
                 } else {
@@ -361,29 +348,11 @@ impl Preferences {
         let path = Self::domain_path(&domain);
         let mut loaded = Self::load_plist(&path).await?;
         if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
-            dict.insert(key.to_string(), Self::to_plist_value(&value));
+            dict.insert(key.to_string(), convert_pref_value_to_plist_value(&value));
         } else {
             return Err(PrefError::InvalidType);
         }
         Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary).await
-    }
-
-    /// Converts a `PrefValue` into a plist Value.
-    fn to_plist_value(val: &PrefValue) -> PlistValue {
-        match val {
-            PrefValue::String(s) => PlistValue::String(s.clone()),
-            PrefValue::Integer(i) => PlistValue::Integer((*i).into()),
-            PrefValue::Float(f) => PlistValue::Real(*f),
-            PrefValue::Boolean(b) => PlistValue::Boolean(*b),
-            PrefValue::Array(arr) => {
-                PlistValue::Array(arr.iter().map(Self::to_plist_value).collect())
-            }
-            PrefValue::Dictionary(dict) => PlistValue::Dictionary(
-                dict.iter()
-                    .map(|(k, v)| (k.clone(), Self::to_plist_value(v)))
-                    .collect(),
-            ),
-        }
     }
 
     /// Delete a key from the given domain.
@@ -546,7 +515,7 @@ impl Preferences {
                     Domain::Path(_) => unreachable!(),
                 };
                 for (k, v) in dict {
-                    let pv = convert(&v);
+                    let pv = convert_plist_value_to_pref_value(&v);
                     if !core::write_pref(cf_name, &k, &pv) {
                         return Err(PrefError::Other(format!(
                             "Failed to import key `{k}` via CFPreferences"
@@ -588,7 +557,7 @@ impl Preferences {
                 };
                 let pref = core::read_pref(cf_name, None)
                     .unwrap_or(PrefValue::Dictionary(Default::default()));
-                let plist_val = Self::to_plist_value(&pref);
+                let plist_val = convert_pref_value_to_plist_value(&pref);
                 if !matches!(plist_val, PlistValue::Dictionary(_)) {
                     return Err(PrefError::Other(
                         "CF export produced non-dictionary root".into(),
@@ -629,36 +598,6 @@ impl Preferences {
         }
     }
 
-    /// Pretty-print a `PlistValue` in Apple-style format (for CLI).
-    pub fn print_apple_style(val: &plist::Value, indent: usize) {
-        let ind = |n| "    ".repeat(n);
-        match val {
-            plist::Value::Dictionary(dict) => {
-                println!("{{");
-                for (k, v) in dict {
-                    print!("{}{} = ", ind(indent + 1), Self::quote_key(k));
-                    Self::print_apple_style(v, indent + 1);
-                    println!(";");
-                }
-                print!("{}}}", ind(indent));
-            }
-            plist::Value::Array(arr) => {
-                println!("(");
-                for v in arr {
-                    print!("{}", ind(indent + 1));
-                    Self::print_apple_style(v, indent + 1);
-                    println!(",");
-                }
-                print!("{})", ind(indent));
-            }
-            plist::Value::String(s) => print!("{}", Self::quote_string(s)),
-            plist::Value::Integer(i) => print!("{i}"),
-            plist::Value::Real(f) => print!("{f}"),
-            plist::Value::Boolean(b) => print!("{}", if *b { "1" } else { "0" }),
-            _ => print!("{val:?}"),
-        }
-    }
-
     /// List all available domains in ~/Library/Preferences.
     pub async fn list_domains() -> Result<Vec<String>, PrefError> {
         match *BACKEND {
@@ -695,34 +634,21 @@ impl Preferences {
         }
     }
 
-    /// Quotes a key for Apple-style output.
-    fn quote_key(key: &str) -> String {
-        if key
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            key.to_string()
-        } else {
-            format!("\"{}\"", key.replace('"', "\\\""))
-        }
-    }
-
-    /// Quotes a string for Apple-style output.
-    fn quote_string(s: &str) -> String {
-        if s.chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            s.to_string()
-        } else {
-            format!("\"{}\"", s.replace('"', "\\\""))
-        }
-    }
-
     /// Batch-write multiple key–value pairs for domains concurrently.
     ///
-    /// The input is a vector of tuples `(Domain, String, PrefValue)`. For each unique domain,
-    /// the write requests are merged and applied in a single I/O operation. This function updates only
-    /// the designated keys in the plist, rather than replacing the entire domain.
+    /// # Concurrency & Grouping
+    /// - The input is a vector of tuples `(Domain, String, PrefValue)`.
+    /// - All write requests are grouped by domain.
+    /// - For each domain, all key-value pairs are written in a single I/O operation.
+    /// - All domains are processed concurrently using `futures::future::join_all`.
+    ///
+    /// # Behavior
+    /// - Only the designated keys are updated in each plist; the entire domain is not replaced.
+    /// - For CoreFoundation domains, each key is written individually.
+    /// - For file-based domains, the plist is loaded, updated, and saved atomically.
+    ///
+    /// # Errors
+    /// - If any write fails, the operation returns an error.
     pub async fn write_batch(batch: Vec<(Domain, String, PrefValue)>) -> Result<(), PrefError> {
         let mut groups: HashMap<Domain, Vec<(String, PrefValue)>> = HashMap::new();
         // Group write requests by domain.
@@ -752,7 +678,7 @@ impl Preferences {
                     let mut loaded = Self::load_plist(&path).await?;
                     if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
                         for (key, value) in writes {
-                            dict.insert(key, Self::to_plist_value(&value));
+                            dict.insert(key, convert_pref_value_to_plist_value(&value));
                         }
                     } else {
                         return Err(PrefError::InvalidType);
@@ -770,14 +696,19 @@ impl Preferences {
 
     /// Batch-read multiple keys for domains concurrently.
     ///
-    /// For each unique domain in the provided batch, this method reads the entire plist concurrently
-    /// and then extracts the requested key(s). If a request specifies `None` for the key,
-    /// the entire domain plist is returned; otherwise, the key's value is returned.
+    /// # Concurrency & Grouping
+    /// - The input is a vector of tuples `(Domain, Option<String>)`.
+    /// - Requests are grouped by domain.
+    /// - For each domain, all requested keys are read in a single I/O operation.
+    /// - All domains are processed concurrently using `futures::future::join_all`.
     ///
-    /// Returns a vector of tuples `(Domain, Option<String>, ReadResult)` where the:
-    /// - `Domain` is the domain read,
-    /// - `Option<String>` is the key used (or `None` for the entire domain),
-    /// - `ReadResult` is either the value at that key or the full plist.
+    /// # Behavior
+    /// - If a request specifies `None` for the key, the entire domain plist is returned.
+    /// - Otherwise, the value at the specified key is returned.
+    /// - The result is a vector of tuples `(Domain, Option<String>, ReadResult)`.
+    ///
+    /// # Errors
+    /// - If any read fails (e.g., key not found), the operation returns an error.
     #[allow(clippy::type_complexity)]
     pub async fn read_batch(
         batch: Vec<(Domain, Option<String>)>,
@@ -804,7 +735,7 @@ impl Preferences {
                             None => {
                                 let pref_val = core::read_pref(cf_name, None)
                                     .unwrap_or(PrefValue::Dictionary(Default::default()));
-                                let plist_val = Preferences::to_plist_value(&pref_val);
+                                let plist_val = convert_pref_value_to_plist_value(&pref_val);
                                 results.push((domain.clone(), None, ReadResult::Plist(plist_val)));
                             }
                             Some(k) => {
@@ -839,7 +770,7 @@ impl Preferences {
                                 Ok((
                                     domain.clone(),
                                     Some(k.to_string()),
-                                    ReadResult::Value(convert(val)),
+                                    ReadResult::Value(convert_plist_value_to_pref_value(val)),
                                 ))
                             }
                         })
@@ -861,9 +792,18 @@ impl Preferences {
 
     /// Batch-delete multiple keys for domains concurrently.
     ///
-    /// For each unique domain in the provided batch, this method loads the plist concurrently.
-    /// If any request for a domain has a key of `None`, the entire domain file is deleted.
-    /// Otherwise, the specified keys are removed from the domain.
+    /// # Concurrency & Grouping
+    /// - The input is a vector of tuples `(Domain, Option<String>)`.
+    /// - Requests are grouped by domain.
+    /// - For each domain, all requested deletions are performed in a single I/O operation.
+    /// - All domains are processed concurrently using `futures::future::join_all`.
+    ///
+    /// # Behavior
+    /// - If any request for a domain has a key of `None`, the entire domain file is deleted.
+    /// - Otherwise, only the specified keys are removed from the domain.
+    ///
+    /// # Errors
+    /// - If any deletion fails (e.g., key not found), the operation returns an error.
     pub async fn delete_batch(batch: Vec<(Domain, Option<String>)>) -> Result<(), PrefError> {
         let mut groups: HashMap<Domain, Vec<Option<String>>> = HashMap::new();
 
@@ -931,17 +871,53 @@ impl Preferences {
     }
 }
 
-/// Helper to convert a plist Value into a PrefValue.
-fn convert(val: &PlistValue) -> PrefValue {
+// Conversion helpers
+//
+// These must only be used by the module itself;
+// exporting of these functions is prohibited.
+
+fn convert_plist_value_to_pref_value(val: &PlistValue) -> PrefValue {
     match val {
         PlistValue::String(s) => PrefValue::String(s.clone()),
         PlistValue::Integer(i) => PrefValue::Integer(i.as_signed().unwrap_or(0)),
         PlistValue::Real(f) => PrefValue::Float(*f),
         PlistValue::Boolean(b) => PrefValue::Boolean(*b),
-        PlistValue::Array(arr) => PrefValue::Array(arr.iter().map(convert).collect()),
-        PlistValue::Dictionary(dict) => {
-            PrefValue::Dictionary(dict.iter().map(|(k, v)| (k.clone(), convert(v))).collect())
+        PlistValue::Array(arr) => {
+            PrefValue::Array(arr.iter().map(convert_plist_value_to_pref_value).collect())
         }
+        PlistValue::Dictionary(dict) => PrefValue::Dictionary(
+            dict.iter()
+                .map(|(k, v)| (k.clone(), convert_plist_value_to_pref_value(v)))
+                .collect(),
+        ),
         _ => PrefValue::String(format!("{val:?}")),
+    }
+}
+
+fn convert_pref_value_to_plist_value(val: &PrefValue) -> PlistValue {
+    match val {
+        PrefValue::String(s) => PlistValue::String(s.clone()),
+        PrefValue::Integer(i) => PlistValue::Integer((*i).into()),
+        PrefValue::Float(f) => PlistValue::Real(*f),
+        PrefValue::Boolean(b) => PlistValue::Boolean(*b),
+        PrefValue::Array(arr) => {
+            PlistValue::Array(arr.iter().map(convert_pref_value_to_plist_value).collect())
+        }
+        PrefValue::Dictionary(dict) => PlistValue::Dictionary(
+            dict.iter()
+                .map(|(k, v)| (k.clone(), convert_pref_value_to_plist_value(v)))
+                .collect(),
+        ),
+    }
+}
+
+fn convert_plist_value_to_string(val: &plist::Value) -> String {
+    match val {
+        plist::Value::String(s) => format!("{s:?}"),
+        plist::Value::Integer(i) => i.as_signed().unwrap_or(0).to_string(),
+        plist::Value::Real(f) => f.to_string(),
+        plist::Value::Boolean(b) => b.to_string(),
+        plist::Value::Array(_) | plist::Value::Dictionary(_) => format!("{val:?}"),
+        _ => format!("{val:?}"),
     }
 }

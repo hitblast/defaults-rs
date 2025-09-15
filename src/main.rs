@@ -2,10 +2,13 @@ use std::path::PathBuf;
 
 use clap::ArgMatches;
 use defaults_rs::build_cli;
+use defaults_rs::cli::{get_required_arg, print_result};
 use defaults_rs::preferences::Preferences;
+use defaults_rs::prettifier::Prettifier;
 use defaults_rs::{Domain, PrefValue, ReadResult};
 use tokio::fs;
 
+/// main runner func
 #[tokio::main]
 async fn main() {
     let matches = build_cli().get_matches();
@@ -16,6 +19,7 @@ async fn main() {
     }
 }
 
+/// Returns a domain object based on the kind of the argument that is passed.
 async fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
     let domain = sub_m.get_one::<String>("domain").expect("domain required");
     let path = PathBuf::from(domain);
@@ -53,28 +57,7 @@ async fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
     }
 }
 
-// Helper to print Ok(()) or error.
-fn print_result<T, E: std::fmt::Display>(res: Result<T, E>)
-where
-    T: std::fmt::Debug,
-{
-    match res {
-        Ok(_) => println!("OK"),
-        Err(e) => eprintln!("Error: {e}"),
-    }
-}
-
-// Helper to get a required argument
-fn get_required_arg<'a>(sub_m: &'a ArgMatches, name: &str) -> &'a str {
-    sub_m
-        .get_one::<String>(name)
-        .map(String::as_str)
-        .unwrap_or_else(|| {
-            eprintln!("Error: {name} required");
-            std::process::exit(1);
-        })
-}
-
+/// Function to handle subcommand runs.
 async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
     match cmd {
         "domains" => match Preferences::list_domains().await {
@@ -107,7 +90,7 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
                     let key = sub_m.get_one::<String>("key").map(String::as_str);
                     match Preferences::read(domain, key).await {
                         Ok(ReadResult::Plist(plist_val)) => {
-                            Preferences::print_apple_style(&plist_val, 0);
+                            Prettifier::print_apple_style(&plist_val, 0);
                             println!();
                         }
                         Ok(ReadResult::Value(val)) => println!("{val:?}"),

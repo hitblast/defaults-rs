@@ -160,7 +160,10 @@ pub fn delete_domain(domain: &str) -> bool {
     }
 }
 
-// -------- Conversion helpers --------
+// Conversion helpers
+//
+// These must only be used by the module itself;
+// exporting of these functions is prohibited.
 
 unsafe fn cfboolean_to_bool(r: CFTypeRef) -> Option<bool> {
     // Capture the canonical true/false CFBoolean refs once, then compare.
