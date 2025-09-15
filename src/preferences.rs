@@ -738,7 +738,7 @@ impl Preferences {
                         Domain::Path(_) => unreachable!(),
                     };
                     for (key, value) in writes {
-                        if !crate::prefs::core::write_pref(cf_name, &key, &value) {
+                        if !core::write_pref(cf_name, &key, &value) {
                             return Err(PrefError::Other(format!(
                                 "CFPreferences write failed for key {}",
                                 key
@@ -890,7 +890,7 @@ impl Preferences {
                         Ok(())
                     } else {
                         for k in keys.into_iter().flatten() {
-                            if !crate::prefs::core::delete_key(cf_name, &k) {
+                            if !core::delete_key(cf_name, &k) {
                                 return Err(PrefError::Other(format!(
                                     "CFPreferences delete failed for key {}",
                                     k
