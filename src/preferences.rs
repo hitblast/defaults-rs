@@ -730,16 +730,37 @@ impl Preferences {
             groups.entry(domain).or_default().push((key, value));
         }
         let tasks = groups.into_iter().map(|(domain, writes)| async move {
-            let path = Self::domain_path(&domain);
-            let mut loaded = Self::load_plist(&path).await?;
-            if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
-                for (key, value) in writes {
-                    dict.insert(key, Self::to_plist_value(&value));
+            match &domain {
+                Domain::User(_) | Domain::Global => {
+                    let cf_name = match &domain {
+                        Domain::Global => ".GlobalPreferences",
+                        Domain::User(s) => s.as_str(),
+                        Domain::Path(_) => unreachable!(),
+                    };
+                    for (key, value) in writes {
+                        if !crate::prefs::core::write_pref(cf_name, &key, &value) {
+                            return Err(PrefError::Other(format!(
+                                "CFPreferences write failed for key {}",
+                                key
+                            )));
+                        }
+                    }
+                    Ok(())
                 }
-            } else {
-                return Err(PrefError::InvalidType);
+                Domain::Path(_) => {
+                    let path = Self::domain_path(&domain);
+                    let mut loaded = Self::load_plist(&path).await?;
+                    if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
+                        for (key, value) in writes {
+                            dict.insert(key, Self::to_plist_value(&value));
+                        }
+                    } else {
+                        return Err(PrefError::InvalidType);
+                    }
+                    Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary)
+                        .await
+                }
             }
-            Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary).await
         });
         for res in join_all(tasks).await {
             res?;
@@ -770,34 +791,63 @@ impl Preferences {
 
         // spawn concurrent futures to process each domain
         let futures = groups.into_iter().map(|(domain, keys)| async move {
-            let loaded = Self::read_internal(&domain).await?;
-            let plist = loaded.plist;
-
-            // process each key for the current domain
-            let results: Result<Vec<_>, PrefError> = keys
-                .into_iter()
-                .map(|opt_key| {
-                    match opt_key.as_deref() {
-                        None => Ok((domain.clone(), None, ReadResult::Plist(plist.clone()))),
-                        Some(k) => {
-                            // ensure the plist is a dictionary
-                            let dict = match plist {
-                                PlistValue::Dictionary(ref d) => d,
-                                _ => return Err(PrefError::InvalidType),
-                            };
-                            // look up the value and return an error if not found
-                            let val = dict.get(k).ok_or(PrefError::KeyNotFound)?;
-                            Ok((
-                                domain.clone(),
-                                Some(k.to_string()),
-                                ReadResult::Value(convert(val)),
-                            ))
+            match &domain {
+                Domain::User(_) | Domain::Global => {
+                    let cf_name = match &domain {
+                        Domain::Global => ".GlobalPreferences",
+                        Domain::User(s) => s.as_str(),
+                        Domain::Path(_) => unreachable!(),
+                    };
+                    let mut results = Vec::new();
+                    for opt_key in keys {
+                        match opt_key.as_deref() {
+                            None => {
+                                let pref_val = core::read_pref(cf_name, None)
+                                    .unwrap_or(PrefValue::Dictionary(Default::default()));
+                                let plist_val = Preferences::to_plist_value(&pref_val);
+                                results.push((domain.clone(), None, ReadResult::Plist(plist_val)));
+                            }
+                            Some(k) => {
+                                let pref_val = core::read_pref(cf_name, Some(k));
+                                match pref_val {
+                                    Some(val) => results.push((
+                                        domain.clone(),
+                                        Some(k.to_string()),
+                                        ReadResult::Value(val),
+                                    )),
+                                    None => return Err(PrefError::KeyNotFound),
+                                }
+                            }
                         }
                     }
-                })
-                .collect();
+                    Ok(results)
+                }
+                Domain::Path(_) => {
+                    let loaded = Self::read_internal(&domain).await?;
+                    let plist = loaded.plist;
 
-            results
+                    let results: Result<Vec<_>, PrefError> = keys
+                        .into_iter()
+                        .map(|opt_key| match opt_key.as_deref() {
+                            None => Ok((domain.clone(), None, ReadResult::Plist(plist.clone()))),
+                            Some(k) => {
+                                let dict = match plist {
+                                    PlistValue::Dictionary(ref d) => d,
+                                    _ => return Err(PrefError::InvalidType),
+                                };
+                                let val = dict.get(k).ok_or(PrefError::KeyNotFound)?;
+                                Ok((
+                                    domain.clone(),
+                                    Some(k.to_string()),
+                                    ReadResult::Value(convert(val)),
+                                ))
+                            }
+                        })
+                        .collect();
+
+                    results
+                }
+            }
         });
 
         // execute all domain reads concurrently
@@ -824,22 +874,51 @@ impl Preferences {
 
         // spawn concurrent futures to process each domain deletion
         let futures = groups.into_iter().map(|(domain, keys)| async move {
-            if keys.iter().any(|k| k.is_none()) {
-                // if any key is None, delete the entire domain
-                Self::delete(domain.clone(), None).await
-            } else {
-                let path = Self::domain_path(&domain);
-                let mut loaded = Self::load_plist(&path).await?;
-                if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
-                    for k in keys.into_iter().flatten() {
-                        if dict.remove(&k).is_none() {
-                            return Err(PrefError::KeyNotFound);
+            match &domain {
+                Domain::User(_) | Domain::Global => {
+                    let cf_name = match &domain {
+                        Domain::Global => ".GlobalPreferences",
+                        Domain::User(s) => s.as_str(),
+                        Domain::Path(_) => unreachable!(),
+                    };
+                    if keys.iter().any(|k| k.is_none()) {
+                        if !core::delete_domain(cf_name) {
+                            return Err(PrefError::Other(
+                                "CFPreferences delete domain failed".into(),
+                            ));
                         }
+                        Ok(())
+                    } else {
+                        for k in keys.into_iter().flatten() {
+                            if !crate::prefs::core::delete_key(cf_name, &k) {
+                                return Err(PrefError::Other(format!(
+                                    "CFPreferences delete failed for key {}",
+                                    k
+                                )));
+                            }
+                        }
+                        Ok(())
                     }
-                } else {
-                    return Err(PrefError::InvalidType);
                 }
-                Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary).await
+                Domain::Path(_) => {
+                    if keys.iter().any(|k| k.is_none()) {
+                        Self::delete(domain.clone(), None).await
+                    } else {
+                        let path = Self::domain_path(&domain);
+                        let mut loaded = Self::load_plist(&path).await?;
+                        if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
+                            for k in keys.into_iter().flatten() {
+                                if dict.remove(&k).is_none() {
+                                    return Err(PrefError::KeyNotFound);
+                                }
+                            }
+                        } else {
+                            return Err(PrefError::InvalidType);
+                        }
+                        Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary)
+                            .await
+                    }
+                }
             }
         });
 
