@@ -62,7 +62,7 @@ jobs:
           overwrite: true
 
   build-x86_64:
-    runs-on: macos-13
+    runs-on: macos-15-intel
 
     env:
       FILE_NAME: drs-${{ github.event.release.name }}-darwin-x86_64.zip
