@@ -16,6 +16,15 @@ pub enum Domain {
     Path(std::path::PathBuf),
 }
 
+impl std::fmt::Display for Domain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Domain::User(s) => write!(f, "{}", s),
+            Domain::Global => write!(f, "NSGlobalDomain"),
+            Domain::Path(p) => write!(f, "{}", p.display()),
+        }
+    }
+}
 /// Value stored in preferences.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PrefValue {
