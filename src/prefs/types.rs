@@ -36,7 +36,37 @@ pub enum PrefValue {
     Dictionary(HashMap<String, PrefValue>),
 }
 
-// Extension for PrefValue
+impl std::fmt::Display for PrefValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PrefValue::Boolean(b) => write!(f, "{}", b),
+            PrefValue::Integer(i) => write!(f, "{}", i),
+            PrefValue::Float(fl) => write!(f, "{}", fl),
+            PrefValue::String(s) => write!(f, "{}", s),
+            PrefValue::Array(arr) => {
+                write!(
+                    f,
+                    "[{}]",
+                    arr.iter()
+                        .map(|v| format!("{}", v))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            PrefValue::Dictionary(dict) => {
+                write!(
+                    f,
+                    "{{{}}}",
+                    dict.iter()
+                        .map(|(k, v)| format!("{}: {}", k, v))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+        }
+    }
+}
+
 impl PrefValue {
     /// Converts a type flag into its PrefValue counterpart.
     pub fn from_str(type_flag: &str, s: &str) -> Result<Self, String> {
