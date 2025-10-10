@@ -4,6 +4,7 @@ version = "0.3.4"
 edition = "2024"
 authors = ["HitBlast <hitblastlive@gmail.com>"]
 description = "Near drop-in replacement for the macOS defaults CLI with API bindings for Rust"
+documentation = "https://hitblast.github.io/defaults-rs"
 license = "MIT"
 repository = "https://github.com/hitblast/defaults-rs"
 keywords = ["macos", "defaults", "cli", "preferences", "plist"]
