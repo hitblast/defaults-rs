@@ -1,12 +1,12 @@
-///! CLI definition and argument helpers for defaults-rs.
-///
-/// This module is responsible for:
-/// - Defining the command-line interface (CLI) structure using clap.
-/// - Specifying subcommands, arguments, and their relationships.
-/// - Providing helpers for argument parsing and error reporting (if needed).
-///
-/// No business logic or backend operations are performed here.
-/// All CLI parsing is separated from preferences management and backend details.
+//! CLI definition and argument helpers for defaults-rs.
+//
+// This module is responsible for:
+// - Defining the command-line interface (CLI) structure using clap.
+// - Specifying subcommands, arguments, and their relationships.
+// - Providing helpers for argument parsing and error reporting (if needed).
+//
+// No business logic or backend operations are performed here.
+// All CLI parsing is separated from preferences management and backend details.
 use clap::{Arg, Command};
 
 pub fn build_cli() -> Command {

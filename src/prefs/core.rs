@@ -309,7 +309,7 @@ fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
             }
         },
         PrefValue::Array(items) => unsafe {
-            let mut cf_items: Vec<CFTypeRef> = items.iter().map(|v| pref_to_cf(v)).collect();
+            let mut cf_items: Vec<CFTypeRef> = items.iter().map(pref_to_cf).collect();
             CFArrayCreate(
                 kCFAllocatorDefault,
                 cf_items.as_mut_ptr() as *const _,
@@ -323,7 +323,7 @@ fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
                 .iter()
                 .map(|k| k.as_concrete_TypeRef() as CFTypeRef)
                 .collect();
-            let mut values: Vec<CFTypeRef> = map.values().map(|v| pref_to_cf(v)).collect();
+            let mut values: Vec<CFTypeRef> = map.values().map(pref_to_cf).collect();
             CFDictionaryCreate(
                 kCFAllocatorDefault,
                 keys.as_mut_ptr() as *const _,

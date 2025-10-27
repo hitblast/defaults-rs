@@ -280,7 +280,7 @@ impl Preferences {
                 };
                 match core::read_pref(cf_name, key) {
                     Some(pref_val) => {
-                        if let Some(_) = key {
+                        if key.is_some() {
                             Ok(ReadResult::Value(pref_val))
                         } else {
                             // Expect dictionary for whole domain
