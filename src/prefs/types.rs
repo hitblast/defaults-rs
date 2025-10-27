@@ -103,18 +103,21 @@ impl PrefValue {
 }
 
 /// Result of a read operation: either a single value or a whole plist.
+#[derive(Debug)]
 pub enum ReadResult {
     Value(PrefValue),
     Plist(plist::Value),
 }
 
 /// Result of a find operation.
+#[derive(Debug)]
 pub struct FindMatch {
     pub key_path: String,
     pub value: String,
 }
 
 /// Struct representing a loaded plist, including its original owner and whether it was read as binary.
+#[derive(Debug)]
 pub struct LoadedPlist {
     pub plist: PlistValue,
     pub orig_owner: Option<(u32, u32)>,

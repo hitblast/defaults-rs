@@ -22,13 +22,15 @@ Near drop-in replacement for the macOS `defaults` CLI with API bindings for Rust
 
 ## Key Features
 
-- Use it as a **direct replacement** for `defaults` without hassle.
+- Use as an alternative to `defaults` without hassle.
 - Read, write, delete, rename, import/export, and inspect preferences using the built-in **async Rust API**.
-- Supports user and global **domains**, or any plist **file path**.
+- Supports user/global/path domains.
 - Supports **all plist value types** (int, float, bool, string, arrays, dictionaries).
-- Pretty-prints plist data close to the original `defaults` format.
-- Handles both binary and XML plist files transparently.
-- Extensible.
+- Pretty-printing and better logging than the original tool.
+- Dynamically chooses between XML and binary PLIST data formats.
+
+> [!WARNING]
+> Some specs might not be applicable (e.g. adding to dict) currently for the CLI side, so the API side is exposed fully for proper extensibility.
 
 ## Installation
 
@@ -178,21 +180,37 @@ async fn main() {
 The API also provides unified batch functions which can significantly reduce the amount of I/O per read/write/delete if you want to do multiple queries.
 
 ```rust
+use anyhow::Result;
 use defaults_rs::{Domain, PrefValue, Preferences};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     // Batch write (only updates designated keys)
     let write_batch = vec![
-        (Domain::User("com.apple.dock".into()), "tilesize".into(), PrefValue::Integer(48)),
-        (Domain::User("com.apple.dock".into()), "autohide".into(), PrefValue::Boolean(true)),
-        (Domain::User("com.apple.keyboard".into()), "InitialKeyRepeat".into(), PrefValue::Integer(25)),
+        (
+            Domain::User("com.apple.dock".into()),
+            "tilesize".into(),
+            PrefValue::Integer(48),
+        ),
+        (
+            Domain::User("com.apple.dock".into()),
+            "autohide".into(),
+            PrefValue::Boolean(true),
+        ),
+        (
+            Domain::User("com.apple.keyboard".into()),
+            "InitialKeyRepeat".into(),
+            PrefValue::Integer(25),
+        ),
     ];
     Preferences::write_batch(write_batch).await?;
 
     // Batch read:
     let read_batch = vec![
-        (Domain::User("com.apple.dock".into()), Some("tilesize".into())),
+        (
+            Domain::User("com.apple.dock".into()),
+            Some("tilesize".into()),
+        ),
         (Domain::User("com.apple.keyboard".into()), None), // Read entire domain
     ];
     let results = Preferences::read_batch(read_batch).await?;
@@ -205,8 +223,14 @@ async fn main() -> anyhow::Result<()> {
 
     // Batch delete:
     let delete_batch = vec![
-        (Domain::User("com.apple.dock".into()), Some("tilesize".into())),
-        (Domain::User("com.apple.dock".into()), Some("autohide".into())),
+        (
+            Domain::User("com.apple.dock".into()),
+            Some("tilesize".into()),
+        ),
+        (
+            Domain::User("com.apple.dock".into()),
+            Some("autohide".into()),
+        ),
         (Domain::User("com.apple.keyboard".into()), None), // Delete entire domain file
     ];
     Preferences::delete_batch(delete_batch).await?;

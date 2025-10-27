@@ -6,6 +6,8 @@ pub use prefs::error::PrefError;
 pub use prefs::types::{Domain, PrefValue, ReadResult};
 
 pub mod preferences;
+pub use preferences::Preferences;
+
 pub mod prettifier;
 
 pub mod cli;
