@@ -5,6 +5,9 @@
 #### `defaults` replacement for macOS
 
 ![Crates.io Total Downloads](https://img.shields.io/crates/d/defaults-rs)
+[![Refactor CI](https://github.com/hitblast/defaults-rs/actions/workflows/tests.yml/badge.svg)](https://github.com/hitblast/defaults-rs/actions/workflows/tests.yml)
+
+<img src="assets/demo.gif">
 
 ## Table of Contents
 
