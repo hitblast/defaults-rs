@@ -8,4 +8,4 @@ publish = false
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 clap_mangen = "0.2"
-defaults-rs = { path = "../" }
+defaults-rs = { path = "../", features = ["cli"] }

@@ -35,7 +35,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build release artifact
-        run: cargo build --release --verbose --locked
+        run: cargo build --release --verbose --locked --features cli
 
       - name: Package release
         run: |
@@ -61,60 +61,8 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
 
-  build-x86_64:
-    runs-on: macos-15-intel
-
-    env:
-      FILE_NAME: drs-${{ github.event.release.name }}-darwin-x86_64.zip
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-
-      - name: Cache Cargo registry and build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Build release artifact
-        run: cargo build --release --verbose --locked
-
-      - name: Package release
-        run: |
-          mkdir -p release/bin release/man/man1
-          cp target/release/drs release/bin/
-          cp man/man1/drs.1 release/man/man1/
-          cp LICENSE release/
-          cp README.md release/
-          cd release && zip -r ../${{ env.FILE_NAME }} bin man README.md LICENSE && cd ..
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: drs-darwin-x86_64
-          path: ${{ env.FILE_NAME }}
-          retention-days: 90
-
-      - name: Upload binary to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ env.FILE_NAME }}
-          tag: ${{ github.ref }}
-          overwrite: true
-
   publish:
-    needs: [build-arm64, build-x86_64]
+    needs: [build-arm64]
     runs-on: macos-latest
 
     env:
