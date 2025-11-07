@@ -43,7 +43,7 @@ $ brew install hitblast/tap/drs
 ### Using `cargo`:
 
 ```sh
-$ cargo install defaults-rs
+$ cargo install defaults-rs --features cli
 ```
 
 ### Using `mise`:
@@ -51,12 +51,6 @@ $ cargo install defaults-rs
 ```sh
 # NOTE: This will compile the binary for your system.
 $ mise use -g cargo:defaults-rs
-```
-
-### Manual Build & Install
-
-```sh
-$ cargo install defaults-rs --features cli
 ```
 
 ## CLI Usage
