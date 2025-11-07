@@ -24,7 +24,7 @@ core-foundation = "0.9"
 core-foundation-sys = "0.8"
 
 [features]
-default = []
+default = ["cli"]
 cli = ["clap"]
 
 [dependencies.clap]

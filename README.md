@@ -31,7 +31,7 @@ $ brew install hitblast/tap/drs
 ### Using `cargo`:
 
 ```sh
-$ cargo install defaults-rs --features cli
+$ cargo install defaults-rs
 ```
 
 ### Using `mise`:
@@ -126,7 +126,7 @@ $ drs export com.apple.dock ./backup.plist
 To access the developer-side API for `defaults-rs`, run the following command and add it to your Cargo project:
 
 ```sh
-$ cargo add defaults-rs
+$ cargo add defaults-rs --no-default-features
 ```
 
 Please refer to the [API reference](https://hitblast.github.io/defaults-rs) for more information about all the available functions.
@@ -136,7 +136,7 @@ Please refer to the [API reference](https://hitblast.github.io/defaults-rs) for 
 ```rust
 use defaults_rs::{Domain, PrefValue, Preferences};
 
-#[tokio::main]
+#[tokio::main]  // `cargo add tokio`
 async fn main() {
     // Read a value
     let value = Preferences::read(Domain::User("com.apple.dock".into()), Some("tilesize"))
@@ -162,10 +162,10 @@ async fn main() {
 The API also provides unified batch functions which can significantly reduce the amount of I/O per read/write/delete if you want to do multiple queries.
 
 ```rust
-use anyhow::Result;
+use anyhow::Result;  // `cargo add anyhow`
 use defaults_rs::{Domain, PrefValue, Preferences};
 
-#[tokio::main]
+#[tokio::main]  // `cargo add tokio`
 async fn main() -> Result<()> {
     // Batch write (only updates designated keys)
     let write_batch = vec![
