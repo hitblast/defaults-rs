@@ -13,7 +13,11 @@ jobs:
     runs-on: macos-latest
 
     env:
-      FILE_NAME: drs-${{ github.event.release.name }}-darwin-arm64.zip
+      MACOSX_DEPLOYMENT_TARGET: 11
+      FILE_NAME: drs-aarch64-apple-darwin.zip
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_CACHE_SIZE: 2G
+      RUSTC_WRAPPER: "sccache"
 
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +27,12 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: sccache stats
+        run: sccache --show-stats || true
+
       - name: Cache Cargo registry and build
         uses: actions/cache@v4
         with:
@@ -30,7 +40,6 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
