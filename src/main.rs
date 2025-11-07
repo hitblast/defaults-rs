@@ -1,15 +1,20 @@
-use std::path::PathBuf;
-
+#[cfg(feature = "cli")]
 use clap::ArgMatches;
-use defaults_rs::build_cli;
-use defaults_rs::cli::{get_required_arg, print_result};
-use defaults_rs::preferences::Preferences;
-use defaults_rs::prettifier::Prettifier;
-use defaults_rs::{Domain, PrefValue, ReadResult};
+#[cfg(feature = "cli")]
+use defaults_rs::{
+    Domain, PrefValue, ReadResult, build_cli,
+    cli::{get_required_arg, print_result},
+    preferences::Preferences,
+    prettifier::Prettifier,
+};
+#[cfg(feature = "cli")]
+use std::path::PathBuf;
+#[cfg(feature = "cli")]
 use tokio::fs;
 
 /// main runner func
 #[tokio::main]
+#[cfg(feature = "cli")]
 async fn main() {
     let matches = build_cli().get_matches();
 
@@ -20,6 +25,7 @@ async fn main() {
 }
 
 /// Returns a domain object based on the kind of the argument that is passed.
+#[cfg(feature = "cli")]
 async fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
     let domain = sub_m.get_one::<String>("domain").expect("domain required");
     let path = PathBuf::from(domain);
@@ -58,6 +64,7 @@ async fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
 }
 
 /// Function to handle subcommand runs.
+#[cfg(feature = "cli")]
 async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
     match cmd {
         "domains" => match Preferences::list_domains().await {
@@ -154,4 +161,9 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
             }
         }
     }
+}
+
+#[cfg(not(feature = "cli"))]
+fn main() {
+    eprintln!("drs was not compiled with the \"cli\" feature enabled.")
 }

@@ -56,7 +56,7 @@ $ mise use -g cargo:defaults-rs
 ### Manual Build & Install
 
 ```sh
-$ cargo install --git https://github.com/hitblast/defaults-rs
+$ cargo install defaults-rs --features cli
 ```
 
 ## CLI Usage

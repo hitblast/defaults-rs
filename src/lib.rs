@@ -10,5 +10,7 @@ pub use preferences::Preferences;
 
 pub mod prettifier;
 
+#[cfg(feature = "cli")]
 pub mod cli;
+#[cfg(feature = "cli")]
 pub use cli::build_cli;
