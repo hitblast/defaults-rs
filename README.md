@@ -9,22 +9,12 @@
 
 <img src="assets/demo.gif">
 
-## Table of Contents
-
-- [Key Features](#key-features)
-- [Installation](#installation)
-- [CLI Usage](#cli-usage)
-- [Rust API](#rust-api)
-- [Contributing](#contributing)
-- [License](#license)
-
 ## Key Features
 
-- Use as an alternative to `defaults` without hassle.
-- Read, write, delete, rename, import/export, and inspect preferences using the built-in **async Rust API**.
+- Read, write, delete, rename, import/export, and inspect preferences.
 - Supports user/global/path domains.
-- Supports **all plist value types** (int, float, bool, string, arrays, dictionaries).
-- Pretty-printing and better logging than the original tool.
+- Supports *all* plist value types.
+- Pretty-printing and better logging than the original.
 - Dynamically chooses between XML and binary PLIST data formats.
 
 > [!WARNING]
