@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use core_foundation::{
-    base::{CFGetTypeID, CFTypeRef, TCFType},
+    base::{CFGetTypeID, CFRelease, CFRetain, CFTypeRef, TCFType},
     boolean::{CFBooleanGetTypeID, kCFBooleanFalse, kCFBooleanTrue},
     number::CFNumber,
     string::CFString,
@@ -286,7 +286,13 @@ unsafe fn cf_any_to_pref(r: CFTypeRef) -> PrefValue {
 
 fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
     match value {
-        PrefValue::String(s) => CFString::new(s).as_concrete_TypeRef() as _,
+        PrefValue::String(s) => {
+            let cs = CFString::new(s);
+            let ptr = cs.as_concrete_TypeRef();
+            unsafe { CFRetain(ptr as *const _ as *mut _) };
+            ptr as CFTypeRef
+        }
+
         PrefValue::Integer(i) => unsafe {
             CFNumberCreate(
                 kCFAllocatorDefault,
@@ -294,6 +300,7 @@ fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
                 i as *const i64 as *const _,
             ) as CFTypeRef
         },
+
         PrefValue::Float(f) => unsafe {
             CFNumberCreate(
                 kCFAllocatorDefault,
@@ -301,37 +308,56 @@ fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
                 f as *const f64 as *const _,
             ) as CFTypeRef
         },
+
         PrefValue::Boolean(b) => unsafe {
-            if *b {
-                kCFBooleanTrue as CFTypeRef
-            } else {
-                kCFBooleanFalse as CFTypeRef
-            }
+            (if *b { kCFBooleanTrue } else { kCFBooleanFalse }) as CFTypeRef
         },
+
         PrefValue::Array(items) => unsafe {
-            let mut cf_items: Vec<CFTypeRef> = items.iter().map(pref_to_cf).collect();
-            CFArrayCreate(
+            let mut cf_items: Vec<CFTypeRef> = items.iter().map(|v| pref_to_cf(v)).collect();
+            let arr = CFArrayCreate(
                 kCFAllocatorDefault,
                 cf_items.as_mut_ptr() as *const _,
                 cf_items.len() as isize,
                 &kCFTypeArrayCallBacks,
-            ) as CFTypeRef
+            ) as CFTypeRef;
+
+            for &it in &cf_items {
+                CFRelease(it as *const _ as *mut _);
+            }
+            arr
         },
+
         PrefValue::Dictionary(map) => unsafe {
-            let key_strings: Vec<CFString> = map.keys().map(|k| CFString::new(k)).collect();
-            let mut keys: Vec<CFTypeRef> = key_strings
+            let key_cfs: Vec<CFString> = map.keys().map(|k| CFString::new(k)).collect();
+            let mut keys: Vec<CFTypeRef> = key_cfs
                 .iter()
-                .map(|k| k.as_concrete_TypeRef() as CFTypeRef)
+                .map(|k| {
+                    let p = k.as_concrete_TypeRef() as CFTypeRef;
+                    CFRetain(p as *const _ as *mut _);
+                    p
+                })
                 .collect();
-            let mut values: Vec<CFTypeRef> = map.values().map(pref_to_cf).collect();
-            CFDictionaryCreate(
+
+            let mut values: Vec<CFTypeRef> = map.values().map(|v| pref_to_cf(v)).collect();
+
+            let dict = CFDictionaryCreate(
                 kCFAllocatorDefault,
                 keys.as_mut_ptr() as *const _,
                 values.as_mut_ptr() as *const _,
                 keys.len() as isize,
                 &kCFTypeDictionaryKeyCallBacks,
                 &kCFTypeDictionaryValueCallBacks,
-            ) as CFTypeRef
+            ) as CFTypeRef;
+
+            for &k in &keys {
+                CFRelease(k as *const _ as *mut _);
+            }
+            for &v in &values {
+                CFRelease(v as *const _ as *mut _);
+            }
+
+            dict
         },
     }
 }
