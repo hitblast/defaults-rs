@@ -156,7 +156,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "defaults-rs"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "clap",
  "core-foundation",
