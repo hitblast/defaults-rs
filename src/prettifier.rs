@@ -46,6 +46,10 @@ pub(crate) fn apple_style_string(val: &PrefValue, indent: usize) -> String {
                 "0".to_string()
             }
         }
+        PrefValue::Data(data) => format!("<Data: {} bytes>", data.len()),
+        PrefValue::Date(dt) => format!("<Date: {}>", dt),
+        PrefValue::Url(url) => format!("<Url: {}>", url),
+        PrefValue::Uuid(uuid) => format!("<Uuid: {}>", uuid),
     }
 }
 

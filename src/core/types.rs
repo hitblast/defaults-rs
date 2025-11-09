@@ -64,6 +64,10 @@ pub enum PrefValue {
     Boolean(bool),
     Array(Vec<PrefValue>),
     Dictionary(HashMap<String, PrefValue>),
+    Data(Vec<u8>), // CFData
+    Date(f64),     // CFDate (CFAbsoluteTime)
+    Url(String),   // CFURL
+    Uuid(String),  // CFUUID
 }
 
 impl Default for PrefValue {
@@ -99,6 +103,18 @@ impl std::fmt::Display for PrefValue {
                         .join(", ")
                 )
             }
+            PrefValue::Data(data) => {
+                write!(f, "<Data: {} bytes>", data.len())
+            }
+            PrefValue::Date(dt) => {
+                write!(f, "<Date: {}>", dt)
+            }
+            PrefValue::Url(url) => {
+                write!(f, "<Url: {}>", url)
+            }
+            PrefValue::Uuid(uuid) => {
+                write!(f, "<Uuid: {}>", uuid)
+            }
         }
     }
 }
@@ -113,6 +129,10 @@ impl PrefValue {
             PrefValue::Boolean(_) => "boolean",
             PrefValue::Array(_) => "array",
             PrefValue::Dictionary(_) => "dictionary",
+            PrefValue::Data(_) => "data",
+            PrefValue::Date(_) => "date",
+            PrefValue::Url(_) => "url",
+            PrefValue::Uuid(_) => "uuid",
         }
     }
 }

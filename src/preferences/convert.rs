@@ -1,4 +1,5 @@
 use plist::Value;
+use std::time::{Duration, UNIX_EPOCH};
 
 use crate::PrefValue;
 
@@ -30,5 +31,17 @@ pub(crate) fn prefvalue_to_plist(val: &PrefValue) -> Value {
                 .map(|(k, v)| (k.clone(), prefvalue_to_plist(v)))
                 .collect(),
         ),
+        PrefValue::Data(data) => Value::Data(data.clone()),
+        PrefValue::Date(dt) => {
+            // Apple epoch is Jan 1, 2001, which is 978307200 seconds after UNIX_EPOCH
+            const APPLE_EPOCH_UNIX: u64 = 978307200;
+            let secs = APPLE_EPOCH_UNIX as f64 + *dt;
+            let system_time = UNIX_EPOCH
+                + Duration::from_secs(secs as u64)
+                + Duration::from_nanos((secs.fract() * 1e9) as u64);
+            Value::Date(plist::Date::from(system_time))
+        }
+        PrefValue::Url(url) => Value::String(url.clone()),
+        PrefValue::Uuid(uuid) => Value::String(uuid.clone()),
     }
 }

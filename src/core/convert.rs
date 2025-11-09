@@ -8,6 +8,8 @@ use core_foundation::{
         kCFTypeArrayCallBacks,
     },
     base::{CFGetTypeID, CFRelease, CFRetain, CFTypeRef, TCFType, kCFAllocatorDefault},
+    data::{CFDataCreate, CFDataGetBytePtr, CFDataGetLength, CFDataGetTypeID},
+    date::{CFDateCreate, CFDateGetAbsoluteTime, CFDateGetTypeID},
     dictionary::{
         CFDictionaryCreate, CFDictionaryGetCount, CFDictionaryGetKeysAndValues,
         CFDictionaryGetTypeID, kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks,
@@ -18,6 +20,8 @@ use core_foundation::{
         kCFNumberSInt64Type,
     },
     string::{CFString, CFStringGetTypeID},
+    url::{CFURLCreateWithString, CFURLGetString, CFURLGetTypeID},
+    uuid::{CFUUIDCreateFromString, CFUUIDCreateString, CFUUIDGetTypeID},
 };
 
 use crate::PrefValue;
@@ -115,6 +119,10 @@ pub(crate) unsafe fn cf_to_pref(r: CFTypeRef) -> PrefValue {
     let num_tid = unsafe { CFNumberGetTypeID() };
     let arr_tid = unsafe { CFArrayGetTypeID() };
     let dict_tid = unsafe { CFDictionaryGetTypeID() };
+    let data_tid = unsafe { CFDataGetTypeID() };
+    let date_tid = unsafe { CFDateGetTypeID() };
+    let url_tid = unsafe { CFURLGetTypeID() };
+    let uuid_tid = unsafe { CFUUIDGetTypeID() };
 
     if tid == string_tid {
         PrefValue::String(unsafe { CFString::wrap_under_get_rule(r as _).to_string() })
@@ -136,6 +144,22 @@ pub(crate) unsafe fn cf_to_pref(r: CFTypeRef) -> PrefValue {
         unsafe {
             cfdict_to_pref(r).unwrap_or_else(|| PrefValue::String("<dict conv error>".into()))
         }
+    } else if tid == data_tid {
+        let len = unsafe { CFDataGetLength(r as _) };
+        let ptr = unsafe { CFDataGetBytePtr(r as _) };
+        let data = unsafe { std::slice::from_raw_parts(ptr, len as usize).to_vec() };
+        PrefValue::Data(data)
+    } else if tid == date_tid {
+        let abs_time = unsafe { CFDateGetAbsoluteTime(r as _) };
+        PrefValue::Date(abs_time)
+    } else if tid == url_tid {
+        let cfstr = unsafe { CFURLGetString(r as _) };
+        let url = unsafe { CFString::wrap_under_get_rule(cfstr as _).to_string() };
+        PrefValue::Url(url)
+    } else if tid == uuid_tid {
+        let cfstr = unsafe { CFUUIDCreateString(kCFAllocatorDefault, r as _) };
+        let uuid = unsafe { CFString::wrap_under_get_rule(cfstr as _).to_string() };
+        PrefValue::Uuid(uuid)
     } else {
         PrefValue::String("<unsupported CF type>".into())
     }
@@ -215,6 +239,27 @@ pub(crate) fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
             }
 
             dict
+        },
+
+        PrefValue::Data(data) => unsafe {
+            CFDataCreate(kCFAllocatorDefault, data.as_ptr(), data.len() as isize) as CFTypeRef
+        },
+
+        PrefValue::Date(dt) => unsafe { CFDateCreate(kCFAllocatorDefault, *dt) as CFTypeRef },
+
+        PrefValue::Url(url) => unsafe {
+            let cf_url_str = CFString::new(url);
+            CFURLCreateWithString(
+                kCFAllocatorDefault,
+                cf_url_str.as_concrete_TypeRef(),
+                std::ptr::null(),
+            ) as CFTypeRef
+        },
+
+        PrefValue::Uuid(uuid) => unsafe {
+            let cf_uuid_str = CFString::new(uuid);
+            CFUUIDCreateFromString(kCFAllocatorDefault, cf_uuid_str.as_concrete_TypeRef())
+                as CFTypeRef
         },
     }
 }
