@@ -13,9 +13,7 @@ use clap::{Arg, Command};
 
 pub fn build_cli() -> Command {
     Command::new("defaults-rs")
-        .about(
-            "Command line interface to a user's defaults. Substitute for original `defaults` CLI.",
-        )
+        .about("Manage your macOS preference & PLIST files.")
         .version(env!("CARGO_PKG_VERSION"))
         .subcommand_required(true)
         .arg_required_else_help(true)

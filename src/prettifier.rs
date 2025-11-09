@@ -1,59 +1,73 @@
 // SPDX-License-Identifier: MIT
 
-/// Pretty-printing utilities for Apple-style output.
-pub struct Prettifier;
+use crate::PrefValue;
 
-impl Prettifier {
-    /// Pretty-print a `PlistValue` in Apple-style format (for CLI).
-    pub fn print_apple_style(val: &plist::Value, indent: usize) {
-        let ind = |n| "    ".repeat(n);
-        match val {
-            plist::Value::Dictionary(dict) => {
-                println!("{{");
-                for (k, v) in dict {
-                    print!("{}{} = ", ind(indent + 1), Self::quote_key(k));
-                    Self::print_apple_style(v, indent + 1);
-                    println!(";");
-                }
-                print!("{}}}", ind(indent));
+/// Prettify a `PlistValue` in Apple-style format (for CLI).
+pub(crate) fn apple_style_string(val: &PrefValue, indent: usize) -> String {
+    let ind = |n| "    ".repeat(n);
+    match val {
+        PrefValue::Dictionary(dict) => {
+            let mut out = String::new();
+            out.push_str("{\n");
+            let mut iter = dict.iter().peekable();
+            while let Some((k, v)) = iter.next() {
+                out.push_str(&format!(
+                    "{}{} = {}",
+                    ind(indent + 1),
+                    quote_key(k),
+                    apple_style_string(v, indent + 1)
+                ));
+                out.push(';');
+                out.push('\n');
             }
-            plist::Value::Array(arr) => {
-                println!("(");
-                for v in arr {
-                    print!("{}", ind(indent + 1));
-                    Self::print_apple_style(v, indent + 1);
-                    println!(",");
-                }
-                print!("{})", ind(indent));
+            out.push_str(&format!("{}}}", ind(indent)));
+            out
+        }
+        PrefValue::Array(arr) => {
+            let mut out = String::new();
+            out.push_str("(\n");
+            let mut iter = arr.iter().peekable();
+            while let Some(v) = iter.next() {
+                out.push_str(&ind(indent + 1));
+                out.push_str(&apple_style_string(v, indent + 1));
+                out.push(',');
+                out.push('\n');
             }
-            plist::Value::String(s) => print!("{}", Self::quote_string(s)),
-            plist::Value::Integer(i) => print!("{i}"),
-            plist::Value::Real(f) => print!("{f}"),
-            plist::Value::Boolean(b) => print!("{}", if *b { "1" } else { "0" }),
-            _ => print!("{val:?}"),
+            out.push_str(&format!("{})", ind(indent)));
+            out
+        }
+        PrefValue::String(s) => quote_string(s),
+        PrefValue::Integer(i) => i.to_string(),
+        PrefValue::Float(f) => f.to_string(),
+        PrefValue::Boolean(b) => {
+            if *b {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
         }
     }
+}
 
-    /// Quotes a key for Apple-style output.
-    pub fn quote_key(key: &str) -> String {
-        if key
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            key.to_string()
-        } else {
-            format!("\"{}\"", key.replace('"', "\\\""))
-        }
+/// Quotes a key for Apple-style output.
+fn quote_key(key: &str) -> String {
+    if key
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        key.to_string()
+    } else {
+        format!("\"{}\"", key.replace('"', "\\\""))
     }
+}
 
-    /// Quotes a string for Apple-style output.
-    pub fn quote_string(s: &str) -> String {
-        if s.chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            s.to_string()
-        } else {
-            format!("\"{}\"", s.replace('"', "\\\""))
-        }
+/// Quotes a string for Apple-style output.
+fn quote_string(s: &str) -> String {
+    if s.chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        s.to_string()
+    } else {
+        format!("\"{}\"", s.replace('"', "\\\""))
     }
 }

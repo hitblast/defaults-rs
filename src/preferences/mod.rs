@@ -10,30 +10,33 @@
 
 mod convert;
 
-use crate::{
-    core::{
-        error::PrefError,
-        types::{Domain, FindMatch, LoadedPlist, PrefValue, ReadResult},
-    },
-    preferences::convert::{plist_to_prefvalue, plist_to_string, prefvalue_to_plist},
-};
-use futures::future::join_all;
-use libc::{gid_t, uid_t};
-use plist::Value as PlistValue;
 use std::{
     collections::{BTreeMap, HashMap},
     ffi::CString,
-    fs::{Permissions, metadata, set_permissions},
-    io::Cursor,
+    fs::Permissions,
     os::{
         fd::AsRawFd,
-        unix::{ffi::OsStrExt, fs::MetadataExt, fs::PermissionsExt},
+        unix::{
+            ffi::OsStrExt,
+            fs::{MetadataExt, PermissionsExt},
+        },
     },
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
+
+use crate::{
+    core::{
+        error::PrefError,
+        types::{Domain, FindMatch, LoadedPlist, PrefValue},
+    },
+    preferences::convert::{plist_to_prefvalue, prefvalue_to_plist},
+};
+use futures::future::join_all;
+use plist::Value;
 use tokio::{
-    fs::{self, File},
+    fs::{self, File, set_permissions},
     io::{AsyncReadExt, AsyncWriteExt},
+    net::unix::{gid_t, uid_t},
 };
 
 /// Backend selection for preferences (CoreFoundation vs File)
@@ -44,31 +47,38 @@ use crate::core::foundation;
 pub struct Preferences;
 
 impl Preferences {
-    // Loads the plist from the given path.
-    async fn load_plist(path: &PathBuf) -> Result<LoadedPlist, PrefError> {
-        let metadata = fs::metadata(path).await;
-        let orig_owner = metadata.as_ref().ok().map(|m| (m.uid(), m.gid()));
+    /// Loads the plist from the given path.
+    async fn load_plist(domain: &Domain) -> Result<LoadedPlist, PrefError> {
+        use std::io::Cursor;
 
-        let (plist, is_binary) = if metadata.is_ok() {
-            let mut file = File::open(path).await.map_err(PrefError::Io)?;
+        let path = domain.get_path();
+        let metadata = fs::metadata(&path).await;
+
+        let orig_owner = match &metadata {
+            Ok(m) => Some((m.uid(), m.gid())),
+            Err(_) => None,
+        };
+
+        let (plist, is_binary) = if let Ok(_) = metadata {
+            let mut file = File::open(&path).await.map_err(PrefError::Io)?;
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
 
             // try to parse as XML first, and if that fails, fallback to another format
-            if let Ok(plist) = PlistValue::from_reader_xml(Cursor::new(&buf[..])) {
+            if let Ok(plist) = Value::from_reader_xml(Cursor::new(&buf[..])) {
                 (plist, false)
             } else {
-                let plist = PlistValue::from_reader(Cursor::new(&buf[..]))
+                let plist = Value::from_reader(Cursor::new(&buf[..]))
                     .map_err(|e| PrefError::Other(format!("Plist parse error: {e}")))?;
                 (plist, true)
             }
         } else {
             // file does not exist, return a new empty dictionary value
-            (PlistValue::Dictionary(plist::Dictionary::new()), false)
+            (Value::Dictionary(plist::Dictionary::new()), false)
         };
 
         Ok(LoadedPlist {
-            plist,
+            plist: plist_to_prefvalue(&plist),
             orig_owner,
             is_binary,
         })
@@ -77,13 +87,14 @@ impl Preferences {
     /// Saves the plist to the specified path and restores ownership using an atomic write.
     async fn save_plist(
         path: &PathBuf,
-        plist: &PlistValue,
+        plist: &PrefValue,
         orig_owner: Option<(u32, u32)>,
         is_binary: bool,
     ) -> Result<(), PrefError> {
         // acquire an exclusive lock on the file if possible
-        let lock_file = std::fs::OpenOptions::new().read(true).open(path);
+        let lock_file = fs::OpenOptions::new().read(true).open(path).await;
         let mut guard_fd = None;
+
         if let Ok(file) = lock_file {
             let fd = file.as_raw_fd();
             // safety: use `flock` to ensure exclusive access to the file while writing
@@ -95,6 +106,8 @@ impl Preferences {
 
         // prepare the buffer by writing the plist in the requested format
         let mut buf = Vec::new();
+        let plist = prefvalue_to_plist(plist);
+
         if is_binary {
             plist
                 .to_writer_binary(&mut buf)
@@ -153,18 +166,13 @@ impl Preferences {
     }
 
     /// Restores file ownership to the given uid/gid.
-    fn restore_ownership<P: AsRef<std::path::Path>>(
-        path: P,
-        uid: u32,
-        gid: u32,
-    ) -> Result<(), PrefError> {
+    async fn restore_ownership(path: &Path, uid: u32, gid: u32) -> Result<(), PrefError> {
         // obtain a reference to the path and retrieve its metadata (including permissions)
-        let path_ref = path.as_ref();
-        let meta = metadata(path_ref).map_err(PrefError::Io)?;
+        let meta = fs::metadata(path).await.map_err(PrefError::Io)?;
         let orig_mode = meta.permissions().mode();
 
         // convert the file path to a null-terminated C string
-        let c_path = CString::new(path_ref.as_os_str().as_bytes())
+        let c_path = CString::new(path.as_os_str().as_bytes())
             .map_err(|_| PrefError::Other("Invalid file path with interior null byte".into()))?;
 
         // safety: call libc::chown with a valid C string to change ownership
@@ -172,29 +180,22 @@ impl Preferences {
 
         if res == 0 {
             // restore the original file mode (permissions)
-            set_permissions(path_ref, Permissions::from_mode(orig_mode)).map_err(PrefError::Io)?;
+            set_permissions(path, Permissions::from_mode(orig_mode))
+                .await
+                .map_err(PrefError::Io)?;
             Ok(())
         } else {
             Err(PrefError::Io(std::io::Error::last_os_error()))
         }
     }
 
-    async fn read_internal(domain: &Domain) -> Result<LoadedPlist, PrefError> {
-        let path = domain.get_path();
-        Self::load_plist(&path).await
-    }
-
     /// List all available domains in ~/Library/Preferences.
-    pub async fn list_domains() -> Result<Vec<String>, PrefError> {
-        let mut list =
+    pub async fn list_domains() -> Result<Vec<Domain>, PrefError> {
+        let list =
             foundation::list_domains().map_err(|_| PrefError::Other("CF list failed".into()))?;
 
-        if !list.contains(&"NSGlobalDomain".to_string()) {
-            list.push("NSGlobalDomain".into());
-        }
-
-        list.sort();
-        Ok(list)
+        let domains: Vec<Domain> = list.iter().map(|f| Domain::User(f.to_string())).collect();
+        Ok(domains)
     }
 
     /// Search all domains for keys or values containing the given word (case-insensitive).
@@ -202,16 +203,14 @@ impl Preferences {
         let word_lower = word.to_lowercase();
         let mut results: BTreeMap<String, Vec<FindMatch>> = BTreeMap::new();
 
-        let domains = Self::list_domains().await?;
+        let domains: Vec<Domain> = Self::list_domains()
+            .await?
+            .into_iter()
+            .chain([Domain::Global])
+            .collect();
 
-        for domain_name in domains {
-            let domain = if domain_name == "NSGlobalDomain" {
-                Domain::Global
-            } else {
-                Domain::User(domain_name.clone())
-            };
-
-            let loaded = match Self::read_internal(&domain).await {
+        for domain in domains {
+            let loaded = match Self::load_plist(&domain).await {
                 Ok(l) => l,
                 Err(_) => continue,
             };
@@ -221,7 +220,7 @@ impl Preferences {
 
             Self::find_in_value(&plist, &word_lower, String::new(), &mut matches);
             if !matches.is_empty() {
-                results.insert(domain_name, matches);
+                results.insert(domain.to_string(), matches);
             }
         }
         Ok(results)
@@ -229,7 +228,7 @@ impl Preferences {
 
     /// Recursively searches a plist Value.
     fn find_in_value(
-        val: &plist::Value,
+        val: &PrefValue,
         word_lower: &str,
         key_path: String,
         matches: &mut Vec<FindMatch>,
@@ -238,7 +237,7 @@ impl Preferences {
             haystack.to_lowercase().contains(needle)
         }
         match val {
-            plist::Value::Dictionary(dict) => {
+            PrefValue::Dictionary(dict) => {
                 for (k, v) in dict {
                     let new_key_path = if key_path.is_empty() {
                         k.clone()
@@ -248,20 +247,20 @@ impl Preferences {
                     if contains_word(k, word_lower) {
                         matches.push(FindMatch {
                             key_path: new_key_path.clone(),
-                            value: plist_to_string(v),
+                            value: v.to_string(),
                         });
                     }
                     Self::find_in_value(v, word_lower, new_key_path, matches);
                 }
             }
-            plist::Value::Array(arr) => {
+            PrefValue::Array(arr) => {
                 for (i, v) in arr.iter().enumerate() {
                     let new_key_path = format!("{key_path}[{i}]");
                     Self::find_in_value(v, word_lower, new_key_path, matches);
                 }
             }
             _ => {
-                let val_str = plist_to_string(val);
+                let val_str = val.to_string();
                 if contains_word(&val_str, word_lower) {
                     matches.push(FindMatch {
                         key_path,
@@ -276,28 +275,20 @@ impl Preferences {
     ///
     /// If `key` is `None`, returns the entire domain as a `plist::Value`.
     /// If `key` is provided, returns the value at that key as a `PrefValue`.
-    pub async fn read(domain: Domain, key: Option<&str>) -> Result<ReadResult, PrefError> {
-        // For direct file path domains, always fall back.
+    pub async fn read(domain: Domain, key: Option<&str>) -> Result<PrefValue, PrefError> {
         if matches!(domain, Domain::Path(_)) {
             return Self::file_read(domain, key).await;
         }
 
-        // Map domain enum to CF domain string
-        let cf_name = match &domain {
-            Domain::Global => ".GlobalPreferences",
-            Domain::User(s) => s.as_str(),
-            Domain::Path(_) => unreachable!(),
-        };
+        let cf_name = &domain.get_cf_name();
 
         match foundation::read_pref(cf_name, key) {
             Some(pref_val) => {
                 if key.is_some() {
-                    Ok(ReadResult::Value(pref_val))
+                    Ok(pref_val)
                 } else {
-                    // Expect dictionary for whole domain
-                    let plist_val = prefvalue_to_plist(&pref_val);
-                    match plist_val {
-                        PlistValue::Dictionary(_) => Ok(ReadResult::Plist(plist_val)),
+                    match pref_val {
+                        PrefValue::Dictionary(_) => Ok(pref_val),
                         _ => Err(PrefError::Other(
                             "Expected dictionary for whole domain".into(),
                         )),
@@ -308,22 +299,22 @@ impl Preferences {
         }
     }
 
-    async fn file_read(domain: Domain, key: Option<&str>) -> Result<ReadResult, PrefError> {
-        let loaded = Self::read_internal(&domain).await?;
+    async fn file_read(domain: Domain, key: Option<&str>) -> Result<PrefValue, PrefError> {
+        let loaded = Self::load_plist(&domain).await?;
         let plist = loaded.plist;
 
         match key {
             Some(k) => {
-                if let PlistValue::Dictionary(dict) = &plist {
+                if let PrefValue::Dictionary(dict) = &plist {
                     match dict.get(k) {
-                        Some(val) => Ok(ReadResult::Value(plist_to_prefvalue(val))),
+                        Some(val) => Ok(val.clone()),
                         None => Err(PrefError::KeyNotFound),
                     }
                 } else {
                     Err(PrefError::InvalidType)
                 }
             }
-            None => Ok(ReadResult::Plist(plist)),
+            None => Ok(plist.clone()),
         }
     }
 
@@ -335,11 +326,7 @@ impl Preferences {
         if matches!(domain, Domain::Path(_)) {
             return Self::file_write(domain, key, value).await;
         }
-        let cf_name = match &domain {
-            Domain::Global => ".GlobalPreferences",
-            Domain::User(s) => s.as_str(),
-            Domain::Path(_) => unreachable!(),
-        };
+        let cf_name = &domain.get_cf_name();
         if foundation::write_pref(cf_name, key, &value) {
             Ok(())
         } else {
@@ -348,15 +335,20 @@ impl Preferences {
     }
 
     async fn file_write(domain: Domain, key: &str, value: PrefValue) -> Result<(), PrefError> {
-        let path = domain.get_path();
-        let mut loaded = Self::load_plist(&path).await?;
+        let mut loaded = Self::load_plist(&domain).await?;
 
-        if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
-            dict.insert(key.to_string(), prefvalue_to_plist(&value));
+        if let PrefValue::Dictionary(ref mut dict) = loaded.plist {
+            dict.insert(key.to_string(), value.clone());
         } else {
             return Err(PrefError::InvalidType);
         }
-        Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary).await
+        Self::save_plist(
+            &domain.get_path(),
+            &loaded.plist,
+            loaded.orig_owner,
+            loaded.is_binary,
+        )
+        .await
     }
 
     /// Delete a key from the given domain.
@@ -367,11 +359,7 @@ impl Preferences {
         if matches!(domain, Domain::Path(_)) {
             return Self::file_delete(domain, key).await;
         }
-        let cf_name = match &domain {
-            Domain::Global => ".GlobalPreferences",
-            Domain::User(s) => s.as_str(),
-            Domain::Path(_) => unreachable!(),
-        };
+        let cf_name = &domain.get_cf_name();
         let ok = match key {
             Some(k) => foundation::delete_key(cf_name, k),
             None => foundation::delete_domain(cf_name),
@@ -393,8 +381,8 @@ impl Preferences {
                 Ok(())
             }
             Some(k) => {
-                let mut loaded = Self::load_plist(&path).await?;
-                if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
+                let mut loaded = Self::load_plist(&domain).await?;
+                if let PrefValue::Dictionary(ref mut dict) = loaded.plist {
                     if dict.remove(k).is_some() {
                         Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary)
                             .await
@@ -412,20 +400,11 @@ impl Preferences {
     ///
     /// Returns a string describing the type.
     pub async fn read_type(domain: Domain, key: &str) -> Result<String, PrefError> {
-        let loaded = Self::read_internal(&domain).await?;
+        let loaded = Self::load_plist(&domain).await?;
         let plist = loaded.plist;
-        if let PlistValue::Dictionary(dict) = &plist {
+        if let PrefValue::Dictionary(dict) = &plist {
             match dict.get(key) {
-                Some(val) => Ok(match val {
-                    PlistValue::String(_) => "string",
-                    PlistValue::Integer(_) => "integer",
-                    PlistValue::Real(_) => "float",
-                    PlistValue::Boolean(_) => "boolean",
-                    PlistValue::Array(_) => "array",
-                    PlistValue::Dictionary(_) => "dictionary",
-                    _ => "unknown",
-                }
-                .to_string()),
+                Some(val) => Ok(val.get_type().to_string()),
                 None => Err(PrefError::KeyNotFound),
             }
         } else {
@@ -440,11 +419,7 @@ impl Preferences {
         if matches!(domain, Domain::Path(_)) {
             return Self::file_rename(domain, old_key, new_key).await;
         }
-        let cf_name = match &domain {
-            Domain::Global => ".GlobalPreferences",
-            Domain::User(s) => s.as_str(),
-            Domain::Path(_) => unreachable!(),
-        };
+        let cf_name = &domain.get_cf_name();
         // Read old value
         let val = foundation::read_pref(cf_name, Some(old_key)).ok_or(PrefError::KeyNotFound)?;
         // Write new key
@@ -461,12 +436,18 @@ impl Preferences {
     }
 
     async fn file_rename(domain: Domain, old_key: &str, new_key: &str) -> Result<(), PrefError> {
-        let path = domain.get_path();
-        let mut loaded = Self::load_plist(&path).await?;
-        if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
+        let mut loaded = Self::load_plist(&domain).await?;
+
+        if let PrefValue::Dictionary(ref mut dict) = loaded.plist {
             if let Some(val) = dict.remove(old_key) {
                 dict.insert(new_key.to_string(), val);
-                Self::save_plist(&path, &loaded.plist, loaded.orig_owner, loaded.is_binary).await
+                Self::save_plist(
+                    &domain.get_path(),
+                    &loaded.plist,
+                    loaded.orig_owner,
+                    loaded.is_binary,
+                )
+                .await
             } else {
                 Err(PrefError::KeyNotFound)
             }
@@ -482,17 +463,18 @@ impl Preferences {
         if matches!(domain, Domain::Path(_)) {
             return Self::file_import(domain, import_path).await;
         }
+
         // Read plist file (async) then set keys via CF.
-        let data = tokio::fs::read(import_path).await.map_err(PrefError::Io)?;
+        let data = fs::read(import_path).await.map_err(PrefError::Io)?;
         // Try XML first
-        let plist_val = if let Ok(v) = PlistValue::from_reader_xml(std::io::Cursor::new(&data)) {
+        let plist_val = if let Ok(v) = Value::from_reader_xml(std::io::Cursor::new(&data)) {
             v
         } else {
-            PlistValue::from_reader(std::io::Cursor::new(&data))
+            Value::from_reader(std::io::Cursor::new(&data))
                 .map_err(|e| PrefError::Other(format!("Plist parse error: {e}")))?
         };
         let dict = match plist_val {
-            PlistValue::Dictionary(d) => d,
+            Value::Dictionary(d) => d,
             _ => {
                 return Err(PrefError::Other(
                     "Import plist must be a dictionary at root".into(),
@@ -500,11 +482,7 @@ impl Preferences {
             }
         };
 
-        let cf_name = match &domain {
-            Domain::Global => ".GlobalPreferences",
-            Domain::User(s) => s.as_str(),
-            Domain::Path(_) => unreachable!(),
-        };
+        let cf_name = &domain.get_cf_name();
         for (k, v) in dict {
             let pv = plist_to_prefvalue(&v);
             if !foundation::write_pref(cf_name, &k, &pv) {
@@ -536,27 +514,25 @@ impl Preferences {
         if matches!(domain, Domain::Path(_)) {
             return Self::file_export(domain, export_path).await;
         }
-        let cf_name = match &domain {
-            Domain::Global => ".GlobalPreferences",
-            Domain::User(s) => s.as_str(),
-            Domain::Path(_) => unreachable!(),
-        };
+        let cf_name = &domain.get_cf_name();
         let pref = foundation::read_pref(cf_name, None)
             .unwrap_or(PrefValue::Dictionary(Default::default()));
-        let plist_val = prefvalue_to_plist(&pref);
-        if !matches!(plist_val, PlistValue::Dictionary(_)) {
+
+        if !matches!(pref, PrefValue::Dictionary(_)) {
             return Err(PrefError::Other(
                 "CF export produced non-dictionary root".into(),
             ));
         }
         // Save using existing atomic writer
         let path = PathBuf::from(export_path);
+
         // Determine original owner if exporting over an existing file
         let orig_owner = tokio::fs::metadata(&path)
             .await
             .ok()
             .map(|m| (m.uid(), m.gid()));
-        Self::save_plist(&path, &plist_val, orig_owner, false).await
+
+        Self::save_plist(&path, &pref, orig_owner, false).await
     }
 
     async fn file_export(domain: Domain, export_path: &str) -> Result<(), PrefError> {
@@ -593,11 +569,7 @@ impl Preferences {
         let tasks = groups.into_iter().map(|(domain, writes)| async move {
             match &domain {
                 Domain::User(_) | Domain::Global => {
-                    let cf_name = match &domain {
-                        Domain::Global => ".GlobalPreferences",
-                        Domain::User(s) => s.as_str(),
-                        Domain::Path(_) => unreachable!(),
-                    };
+                    let cf_name = &domain.get_cf_name();
                     for (key, value) in writes {
                         if !foundation::write_pref(cf_name, &key, &value) {
                             return Err(PrefError::Other(format!(
@@ -610,10 +582,10 @@ impl Preferences {
                 }
                 Domain::Path(_) => {
                     let path = domain.get_path();
-                    let mut loaded = Self::load_plist(&path).await?;
-                    if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
+                    let mut loaded = Self::load_plist(&domain).await?;
+                    if let PrefValue::Dictionary(ref mut dict) = loaded.plist {
                         for (key, value) in writes {
-                            dict.insert(key, prefvalue_to_plist(&value));
+                            dict.insert(key, value);
                         }
                     } else {
                         return Err(PrefError::InvalidType);
@@ -649,7 +621,7 @@ impl Preferences {
     #[allow(clippy::type_complexity)]
     pub async fn read_batch(
         batch: Vec<(Domain, Option<String>)>,
-    ) -> Result<Vec<(Domain, Option<String>, ReadResult)>, PrefError> {
+    ) -> Result<Vec<(Domain, Option<String>, PrefValue)>, PrefError> {
         let mut groups: HashMap<Domain, Vec<Option<String>>> = HashMap::new();
 
         // group requests by domain
@@ -661,28 +633,22 @@ impl Preferences {
         let futures = groups.into_iter().map(|(domain, keys)| async move {
             match &domain {
                 Domain::User(_) | Domain::Global => {
-                    let cf_name = match &domain {
-                        Domain::Global => ".GlobalPreferences",
-                        Domain::User(s) => s.as_str(),
-                        Domain::Path(_) => unreachable!(),
-                    };
+                    let cf_name = &domain.get_cf_name();
                     let mut results = Vec::new();
+
                     for opt_key in keys {
                         match opt_key.as_deref() {
                             None => {
                                 let pref_val = foundation::read_pref(cf_name, None)
                                     .unwrap_or(PrefValue::Dictionary(Default::default()));
-                                let plist_val = prefvalue_to_plist(&pref_val);
-                                results.push((domain.clone(), None, ReadResult::Plist(plist_val)));
+                                results.push((domain.clone(), None, pref_val));
                             }
                             Some(k) => {
                                 let pref_val = foundation::read_pref(cf_name, Some(k));
                                 match pref_val {
-                                    Some(val) => results.push((
-                                        domain.clone(),
-                                        Some(k.to_string()),
-                                        ReadResult::Value(val),
-                                    )),
+                                    Some(val) => {
+                                        results.push((domain.clone(), Some(k.to_string()), val))
+                                    }
                                     None => return Err(PrefError::KeyNotFound),
                                 }
                             }
@@ -691,24 +657,20 @@ impl Preferences {
                     Ok(results)
                 }
                 Domain::Path(_) => {
-                    let loaded = Self::read_internal(&domain).await?;
+                    let loaded = Self::load_plist(&domain).await?;
                     let plist = loaded.plist;
 
                     let results: Result<Vec<_>, PrefError> = keys
                         .into_iter()
                         .map(|opt_key| match opt_key.as_deref() {
-                            None => Ok((domain.clone(), None, ReadResult::Plist(plist.clone()))),
+                            None => Ok((domain.clone(), None, plist.clone())),
                             Some(k) => {
                                 let dict = match plist {
-                                    PlistValue::Dictionary(ref d) => d,
+                                    PrefValue::Dictionary(ref d) => d,
                                     _ => return Err(PrefError::InvalidType),
                                 };
                                 let val = dict.get(k).ok_or(PrefError::KeyNotFound)?;
-                                Ok((
-                                    domain.clone(),
-                                    Some(k.to_string()),
-                                    ReadResult::Value(plist_to_prefvalue(val)),
-                                ))
+                                Ok((domain.clone(), Some(k.to_string()), val.clone()))
                             }
                         })
                         .collect();
@@ -719,7 +681,7 @@ impl Preferences {
         });
 
         // execute all domain reads concurrently
-        let grouped_results: Result<Vec<Vec<(Domain, Option<String>, ReadResult)>>, _> =
+        let grouped_results: Result<Vec<Vec<(Domain, Option<String>, PrefValue)>>, _> =
             futures::future::join_all(futures)
                 .await
                 .into_iter()
@@ -753,11 +715,8 @@ impl Preferences {
         let futures = groups.into_iter().map(|(domain, keys)| async move {
             match &domain {
                 Domain::User(_) | Domain::Global => {
-                    let cf_name = match &domain {
-                        Domain::Global => ".GlobalPreferences",
-                        Domain::User(s) => s.as_str(),
-                        Domain::Path(_) => unreachable!(),
-                    };
+                    let cf_name = &domain.get_cf_name();
+
                     if keys.iter().any(|k| k.is_none()) {
                         if !foundation::delete_domain(cf_name) {
                             return Err(PrefError::Other(
@@ -782,8 +741,8 @@ impl Preferences {
                         Self::delete(domain.clone(), None).await
                     } else {
                         let path = domain.get_path();
-                        let mut loaded = Self::load_plist(&path).await?;
-                        if let PlistValue::Dictionary(ref mut dict) = loaded.plist {
+                        let mut loaded = Self::load_plist(&domain).await?;
+                        if let PrefValue::Dictionary(ref mut dict) = loaded.plist {
                             for k in keys.into_iter().flatten() {
                                 if dict.remove(&k).is_none() {
                                     return Err(PrefError::KeyNotFound);

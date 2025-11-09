@@ -4,14 +4,18 @@
 use clap::ArgMatches;
 #[cfg(feature = "cli")]
 use defaults_rs::{
-    Domain, PrefValue, Preferences, ReadResult, build_cli,
+    Domain, PrefValue, Preferences, build_cli,
     cli::{get_required_arg, print_result},
-    prettifier::Prettifier,
 };
 #[cfg(feature = "cli")]
 use std::path::PathBuf;
 #[cfg(feature = "cli")]
 use tokio::fs;
+
+#[cfg(feature = "cli")]
+mod prettifier;
+#[cfg(feature = "cli")]
+use prettifier::apple_style_string;
 
 /// main runner func
 #[tokio::main]
@@ -64,6 +68,28 @@ async fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
     }
 }
 
+/// Returns a string representation of a preference value based on the typeflag passed.s
+#[cfg(feature = "cli")]
+fn from_typeflag_str(type_flag: &str, s: &str) -> Result<PrefValue, String> {
+    match type_flag {
+        "int" => s
+            .parse::<i64>()
+            .map(PrefValue::Integer)
+            .map_err(|_| "Invalid integer value".into()),
+        "float" => s
+            .parse::<f64>()
+            .map(PrefValue::Float)
+            .map_err(|_| "Invalid float value".into()),
+        "bool" => match s {
+            "true" | "1" => Ok(PrefValue::Boolean(true)),
+            "false" | "0" => Ok(PrefValue::Boolean(false)),
+            _ => Err("Invalid boolean value (use true/false or 1/0)".into()),
+        },
+        "string" => Ok(PrefValue::String(s.to_string())),
+        other => Err(format!("Unsupported type: {other}")),
+    }
+}
+
 /// Function to handle subcommand runs.
 #[cfg(feature = "cli")]
 async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
@@ -97,21 +123,16 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
                 "read" => {
                     let key = sub_m.get_one::<String>("key").map(String::as_str);
                     match Preferences::read(domain, key).await {
-                        Ok(ReadResult::Plist(plist_val)) => {
-                            Prettifier::print_apple_style(&plist_val, 0);
-                            println!();
+                        Ok(val) => {
+                            println!("{}", apple_style_string(&val, 0))
                         }
-                        Ok(ReadResult::Value(val)) => println!("{val:?}"),
                         Err(e) => eprintln!("Error: {e}"),
                     }
                 }
                 "read-type" => {
                     let key = get_required_arg(sub_m, "key");
                     match Preferences::read(domain, Some(key)).await {
-                        Ok(ReadResult::Value(val)) => println!("{}", val.type_name()),
-                        Ok(ReadResult::Plist(_)) => {
-                            eprintln!("Error: read-type expects a key, not a whole domain or plist")
-                        }
+                        Ok(val) => println!("{}", val.get_type()),
                         Err(e) => eprintln!("Error: {e}"),
                     }
                 }
@@ -134,7 +155,7 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
                         std::process::exit(1);
                     };
 
-                    let value = PrefValue::from_str(type_flag, value_str).unwrap_or_else(|e| {
+                    let value = from_typeflag_str(type_flag, value_str).unwrap_or_else(|e| {
                         eprintln!("{e}");
                         std::process::exit(1)
                     });

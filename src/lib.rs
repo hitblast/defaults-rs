@@ -5,12 +5,10 @@
 mod core;
 
 pub use core::error::PrefError;
-pub use core::types::{Domain, PrefValue, ReadResult};
+pub use core::types::{Domain, PrefValue};
 
 mod preferences;
 pub use preferences::Preferences;
-
-pub mod prettifier;
 
 #[cfg(feature = "cli")]
 pub mod cli;

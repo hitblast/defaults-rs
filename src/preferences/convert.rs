@@ -32,14 +32,3 @@ pub(crate) fn prefvalue_to_plist(val: &PrefValue) -> Value {
         ),
     }
 }
-
-pub(crate) fn plist_to_string(val: &plist::Value) -> String {
-    match val {
-        plist::Value::String(s) => format!("{s:?}"),
-        plist::Value::Integer(i) => i.as_signed().unwrap_or(0).to_string(),
-        plist::Value::Real(f) => f.to_string(),
-        plist::Value::Boolean(b) => b.to_string(),
-        plist::Value::Array(_) | plist::Value::Dictionary(_) => format!("{val:?}"),
-        _ => format!("{val:?}"),
-    }
-}

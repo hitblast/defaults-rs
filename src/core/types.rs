@@ -4,8 +4,10 @@
 //!
 //! The batch operations in the API (batch-read and batch-delete) work on the [`Domain`] and [`PrefValue`] types.
 
-use plist::Value as PlistValue;
+use once_cell::sync::Lazy;
 use std::{collections::HashMap, path::PathBuf};
+
+static HOME: Lazy<String> = Lazy::new(|| dirs::home_dir().unwrap().display().to_string());
 
 /// Preferences domain (user or global).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -24,14 +26,21 @@ impl Domain {
         match &self {
             Domain::Global => PathBuf::from(format!(
                 "{}/Library/Preferences/.GlobalPreferences.plist",
-                dirs::home_dir().unwrap().display()
+                *HOME
             )),
-            Domain::User(name) => PathBuf::from(format!(
-                "{}/Library/Preferences/{}.plist",
-                dirs::home_dir().unwrap().display(),
-                name
-            )),
+            Domain::User(name) => {
+                PathBuf::from(format!("{}/Library/Preferences/{}.plist", *HOME, name))
+            }
             Domain::Path(path) => path.clone(),
+        }
+    }
+
+    /// Returns the CoreFoundation name for a given domain.
+    pub fn get_cf_name(&self) -> String {
+        match &self {
+            Domain::Global => String::from(".GlobalPreferences"),
+            Domain::User(name) => name.clone(),
+            Domain::Path(_) => unreachable!("no CF name for path-based domains"),
         }
     }
 }
@@ -95,29 +104,8 @@ impl std::fmt::Display for PrefValue {
 }
 
 impl PrefValue {
-    /// Converts a type flag into its PrefValue counterpart.
-    pub fn from_str(type_flag: &str, s: &str) -> Result<Self, String> {
-        match type_flag {
-            "int" => s
-                .parse::<i64>()
-                .map(PrefValue::Integer)
-                .map_err(|_| "Invalid integer value".into()),
-            "float" => s
-                .parse::<f64>()
-                .map(PrefValue::Float)
-                .map_err(|_| "Invalid float value".into()),
-            "bool" => match s {
-                "true" | "1" => Ok(PrefValue::Boolean(true)),
-                "false" | "0" => Ok(PrefValue::Boolean(false)),
-                _ => Err("Invalid boolean value (use true/false or 1/0)".into()),
-            },
-            "string" => Ok(PrefValue::String(s.to_string())),
-            other => Err(format!("Unsupported type: {other}")),
-        }
-    }
-
     /// Returns the name of the type for the PrefValue instance.
-    pub fn type_name(&self) -> &'static str {
+    pub fn get_type(&self) -> &'static str {
         match self {
             PrefValue::String(_) => "string",
             PrefValue::Integer(_) => "integer",
@@ -127,13 +115,6 @@ impl PrefValue {
             PrefValue::Dictionary(_) => "dictionary",
         }
     }
-}
-
-/// Result of a read operation: either a single value or a whole plist.
-#[derive(Debug)]
-pub enum ReadResult {
-    Value(PrefValue),
-    Plist(plist::Value),
 }
 
 /// Result of a find operation.
@@ -146,7 +127,7 @@ pub struct FindMatch {
 /// Struct representing a loaded plist, including its original owner and whether it was read as binary.
 #[derive(Debug)]
 pub struct LoadedPlist {
-    pub plist: PlistValue,
+    pub plist: PrefValue,
     pub orig_owner: Option<(u32, u32)>,
     pub is_binary: bool,
 }
