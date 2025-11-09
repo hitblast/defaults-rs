@@ -59,7 +59,7 @@ impl Preferences {
             Err(_) => None,
         };
 
-        let (plist, is_binary) = if let Ok(_) = metadata {
+        let (plist, is_binary) = if metadata.is_ok() {
             let mut file = File::open(&path).await.map_err(PrefError::Io)?;
             let mut buf = Vec::new();
             file.read_to_end(&mut buf).await.map_err(PrefError::Io)?;
@@ -140,7 +140,7 @@ impl Preferences {
 
         // restore ownership on the temporary file, if required
         if let Some((uid, gid)) = orig_owner {
-            let _ = Self::restore_ownership(&tmp_path, uid, gid);
+            let _ = Self::restore_ownership(&tmp_path, uid, gid).await;
         }
 
         // atomically replace the original file with the temporary file
@@ -504,7 +504,7 @@ impl Preferences {
             .await
             .map_err(PrefError::Io)?;
         if let Some((uid, gid)) = orig_owner {
-            let _ = Self::restore_ownership(&dest_path, uid, gid);
+            let _ = Self::restore_ownership(&dest_path, uid, gid).await;
         }
         Ok(())
     }

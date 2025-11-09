@@ -9,8 +9,8 @@ pub(crate) fn apple_style_string(val: &PrefValue, indent: usize) -> String {
         PrefValue::Dictionary(dict) => {
             let mut out = String::new();
             out.push_str("{\n");
-            let mut iter = dict.iter().peekable();
-            while let Some((k, v)) = iter.next() {
+            let iter = dict.iter().peekable();
+            for (k, v) in iter {
                 out.push_str(&format!(
                     "{}{} = {}",
                     ind(indent + 1),
@@ -26,8 +26,8 @@ pub(crate) fn apple_style_string(val: &PrefValue, indent: usize) -> String {
         PrefValue::Array(arr) => {
             let mut out = String::new();
             out.push_str("(\n");
-            let mut iter = arr.iter().peekable();
-            while let Some(v) = iter.next() {
+            let iter = arr.iter().peekable();
+            for v in iter {
                 out.push_str(&ind(indent + 1));
                 out.push_str(&apple_style_string(v, indent + 1));
                 out.push(',');
