@@ -1,9 +1,9 @@
 [package]
 name = "defaults-rs"
-version = "0.3.7"
+version = "0.4.0"
 edition = "2024"
 authors = ["Anindya Shiddhartha <hitblastlive@gmail.com>"]
-description = "Near drop-in replacement for the macOS defaults CLI with API bindings for Rust"
+description = "Near drop-in replacement for the macOS defaults CLI with API bindings for Rust."
 documentation = "https://hitblast.github.io/defaults-rs"
 license = "MIT"
 repository = "https://github.com/hitblast/defaults-rs"
