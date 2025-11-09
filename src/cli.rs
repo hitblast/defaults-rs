@@ -11,6 +11,7 @@
 // All CLI parsing is separated from preferences management and backend details.
 use clap::{Arg, Command};
 
+#[cfg(feature = "cli")]
 pub fn build_cli() -> Command {
     Command::new("defaults-rs")
         .about("Manage your macOS preference & PLIST files.")
@@ -120,6 +121,7 @@ pub fn build_cli() -> Command {
 }
 
 /// Helper to print Ok(()) or error.
+#[cfg(feature = "cli")]
 pub fn print_result<T, E: std::fmt::Display>(res: Result<T, E>)
 where
     T: std::fmt::Debug,
@@ -131,6 +133,7 @@ where
 }
 
 /// Helper to get a required argument.
+#[cfg(feature = "cli")]
 pub fn get_required_arg<'a>(sub_m: &'a clap::ArgMatches, name: &str) -> &'a str {
     sub_m
         .get_one::<String>(name)
@@ -141,6 +144,7 @@ pub fn get_required_arg<'a>(sub_m: &'a clap::ArgMatches, name: &str) -> &'a str 
         })
 }
 
+#[cfg(feature = "cli")]
 fn domain_arg() -> Arg {
     Arg::new("domain")
         .help("Domain (e.g. com.apple.dock), or the path to a plist file. Use '-g' or 'NSGlobalDomain' for global domain")
@@ -149,6 +153,7 @@ fn domain_arg() -> Arg {
         .allow_hyphen_values(true)
 }
 
+#[cfg(feature = "cli")]
 fn key_arg(required: bool) -> Arg {
     let mut arg = Arg::new("key").help("Preference key").index(2);
     if required {
@@ -157,6 +162,7 @@ fn key_arg(required: bool) -> Arg {
     arg
 }
 
+#[cfg(feature = "cli")]
 fn path_arg() -> Arg {
     Arg::new("path")
         .help("Path to plist file")
