@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: MIT
+
 //! This module defines the types for representing preferences.
 //!
 //! The batch operations in the API (batch-read and batch-delete) work on the [`Domain`] and [`PrefValue`] types.
 
 use plist::Value as PlistValue;
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 /// Preferences domain (user or global).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -16,6 +18,24 @@ pub enum Domain {
     Path(std::path::PathBuf),
 }
 
+impl Domain {
+    /// Returns the filesystem path for a given domain.
+    pub fn get_path(&self) -> PathBuf {
+        match &self {
+            Domain::Global => PathBuf::from(format!(
+                "{}/Library/Preferences/.GlobalPreferences.plist",
+                dirs::home_dir().unwrap().display()
+            )),
+            Domain::User(name) => PathBuf::from(format!(
+                "{}/Library/Preferences/{}.plist",
+                dirs::home_dir().unwrap().display(),
+                name
+            )),
+            Domain::Path(path) => path.clone(),
+        }
+    }
+}
+
 impl std::fmt::Display for Domain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -25,6 +45,7 @@ impl std::fmt::Display for Domain {
         }
     }
 }
+
 /// Value stored in preferences.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PrefValue {
@@ -38,7 +59,7 @@ pub enum PrefValue {
 
 impl Default for PrefValue {
     fn default() -> Self {
-        Self::String(String::new())
+        PrefValue::String(String::default())
     }
 }
 

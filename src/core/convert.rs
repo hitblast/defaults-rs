@@ -1,169 +1,26 @@
-//! CoreFoundation-based preferences backend (cleaned imports & unsafe usage).
-//!
-//! Provides minimal CFPreferences integration:
-//! - Domain listing
-//! - Single key read / whole domain read
-//! - Write key
-//! - Delete key / whole domain
-//!
-//! Supports scalar, array and dictionary types (best-effort). Binary/data
-//! types are converted to placeholder strings for now.
+// SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
 
 use core_foundation::{
-    base::{CFGetTypeID, CFRelease, CFRetain, CFTypeRef, TCFType},
-    boolean::{CFBooleanGetTypeID, kCFBooleanFalse, kCFBooleanTrue},
-    number::CFNumber,
-    string::CFString,
-};
-
-use core_foundation_sys::{
     array::{
         CFArrayCreate, CFArrayGetCount, CFArrayGetTypeID, CFArrayGetValueAtIndex,
         kCFTypeArrayCallBacks,
     },
-    base::kCFAllocatorDefault,
+    base::{CFGetTypeID, CFRelease, CFRetain, CFTypeRef, TCFType, kCFAllocatorDefault},
     dictionary::{
         CFDictionaryCreate, CFDictionaryGetCount, CFDictionaryGetKeysAndValues,
         CFDictionaryGetTypeID, kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks,
     },
     number::{
-        CFNumberCreate, CFNumberGetType, CFNumberGetTypeID, CFNumberGetValue, kCFNumberDoubleType,
+        CFBooleanGetTypeID, CFNumber, CFNumberCreate, CFNumberGetType, CFNumberGetTypeID,
+        CFNumberGetValue, kCFBooleanFalse, kCFBooleanTrue, kCFNumberDoubleType,
         kCFNumberSInt64Type,
     },
-    preferences::{
-        CFPreferencesAppSynchronize, CFPreferencesCopyAppValue, CFPreferencesCopyApplicationList,
-        CFPreferencesCopyKeyList, CFPreferencesSetAppValue, kCFPreferencesAnyHost,
-        kCFPreferencesCurrentUser,
-    },
-    string::CFStringGetTypeID,
+    string::{CFString, CFStringGetTypeID},
 };
 
-use crate::prefs::types::PrefValue;
-
-/// Public entry to confirm CF backend viability.
-pub fn cf_available() -> bool {
-    list_domains().is_ok()
-}
-
-/// List all preference application IDs (domains) for CurrentUser / AnyHost.
-pub fn list_domains() -> Result<Vec<String>, ()> {
-    unsafe {
-        let arr_ref =
-            CFPreferencesCopyApplicationList(kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-        if arr_ref.is_null() {
-            return Ok(Vec::new());
-        }
-        let len = CFArrayGetCount(arr_ref);
-        let mut out = Vec::with_capacity(len as usize);
-        for i in 0..len {
-            let val = CFArrayGetValueAtIndex(arr_ref, i);
-            if !val.is_null() && CFGetTypeID(val as _) == CFStringGetTypeID() {
-                let s = CFString::wrap_under_get_rule(val as _);
-                out.push(s.to_string());
-            }
-        }
-        out.sort();
-        Ok(out)
-    }
-}
-
-/// Read either a single key or the whole domain as PrefValue.
-pub fn read_pref(domain: &str, key: Option<&str>) -> Option<PrefValue> {
-    unsafe {
-        let domain_cf = CFString::new(domain);
-        match key {
-            Some(k) => {
-                let key_cf = CFString::new(k);
-                let raw = CFPreferencesCopyAppValue(
-                    key_cf.as_concrete_TypeRef(),
-                    domain_cf.as_concrete_TypeRef(),
-                );
-                if raw.is_null() {
-                    return None;
-                }
-                Some(cf_any_to_pref(raw as _))
-            }
-            None => {
-                let keys_ref = CFPreferencesCopyKeyList(
-                    domain_cf.as_concrete_TypeRef(),
-                    kCFPreferencesCurrentUser,
-                    kCFPreferencesAnyHost,
-                );
-                if keys_ref.is_null() {
-                    return Some(PrefValue::Dictionary(HashMap::new()));
-                }
-                let len = CFArrayGetCount(keys_ref);
-                let mut map = HashMap::new();
-                for i in 0..len {
-                    let key_ref = CFArrayGetValueAtIndex(keys_ref, i);
-                    if key_ref.is_null() || CFGetTypeID(key_ref as _) != CFStringGetTypeID() {
-                        continue;
-                    }
-                    let key_cf = CFString::wrap_under_get_rule(key_ref as _);
-                    let raw = CFPreferencesCopyAppValue(
-                        key_cf.as_concrete_TypeRef(),
-                        domain_cf.as_concrete_TypeRef(),
-                    );
-                    if !raw.is_null() {
-                        map.insert(key_cf.to_string(), cf_any_to_pref(raw as _));
-                    }
-                }
-                Some(PrefValue::Dictionary(map))
-            }
-        }
-    }
-}
-
-/// Write (set) a single key in a domain. Returns success (synchronize result).
-pub fn write_pref(domain: &str, key: &str, value: &PrefValue) -> bool {
-    unsafe {
-        let domain_cf = CFString::new(domain);
-        let key_cf = CFString::new(key);
-        let value_ref = pref_to_cf(value);
-        CFPreferencesSetAppValue(
-            key_cf.as_concrete_TypeRef(),
-            value_ref,
-            domain_cf.as_concrete_TypeRef(),
-        );
-        CFPreferencesAppSynchronize(domain_cf.as_concrete_TypeRef()) != 0
-    }
-}
-
-/// Delete a single key. Returns success (including if key absent).
-pub fn delete_key(domain: &str, key: &str) -> bool {
-    unsafe {
-        let domain_cf = CFString::new(domain);
-        let key_cf = CFString::new(key);
-        CFPreferencesSetAppValue(
-            key_cf.as_concrete_TypeRef(),
-            std::ptr::null(),
-            domain_cf.as_concrete_TypeRef(),
-        );
-        CFPreferencesAppSynchronize(domain_cf.as_concrete_TypeRef()) != 0
-    }
-}
-
-/// Delete all keys in a domain.
-pub fn delete_domain(domain: &str) -> bool {
-    if let Some(PrefValue::Dictionary(keys)) = read_pref(domain, None) {
-        let mut ok = true;
-        for k in keys.keys() {
-            if !delete_key(domain, k) {
-                ok = false;
-            }
-        }
-        ok
-    } else {
-        true
-    }
-}
-
-// Conversion helpers
-//
-// These must only be used by the module itself;
-// exporting of these functions is prohibited.
+use crate::PrefValue;
 
 unsafe fn cfboolean_to_bool(r: CFTypeRef) -> Option<bool> {
     // Capture the canonical true/false CFBoolean refs once, then compare.
@@ -215,7 +72,7 @@ unsafe fn cfarray_to_pref(r: CFTypeRef) -> Option<PrefValue> {
     for i in 0..len {
         let item = unsafe { CFArrayGetValueAtIndex(r as _, i) };
         if !item.is_null() {
-            out.push(unsafe { cf_any_to_pref(item as _) });
+            out.push(unsafe { cf_to_pref(item as _) });
         }
     }
     Some(PrefValue::Array(out))
@@ -244,14 +101,14 @@ unsafe fn cfdict_to_pref(r: CFTypeRef) -> Option<PrefValue> {
             let key = unsafe { CFString::wrap_under_get_rule(kref as _).to_string() };
             let vref = vals[i];
             if !vref.is_null() {
-                map.insert(key, unsafe { cf_any_to_pref(vref as _) });
+                map.insert(key, unsafe { cf_to_pref(vref as _) });
             }
         }
     }
     Some(PrefValue::Dictionary(map))
 }
 
-unsafe fn cf_any_to_pref(r: CFTypeRef) -> PrefValue {
+pub(crate) unsafe fn cf_to_pref(r: CFTypeRef) -> PrefValue {
     let tid = unsafe { CFGetTypeID(r) };
     let string_tid = unsafe { CFStringGetTypeID() };
     let bool_tid = unsafe { CFBooleanGetTypeID() };
@@ -284,7 +141,7 @@ unsafe fn cf_any_to_pref(r: CFTypeRef) -> PrefValue {
     }
 }
 
-fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
+pub(crate) fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
     match value {
         PrefValue::String(s) => {
             let cs = CFString::new(s);

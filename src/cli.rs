@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! CLI definition and argument helpers for defaults-rs.
 //
 // This module is responsible for:

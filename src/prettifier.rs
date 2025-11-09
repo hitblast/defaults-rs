@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 /// Pretty-printing utilities for Apple-style output.
 pub struct Prettifier;
 

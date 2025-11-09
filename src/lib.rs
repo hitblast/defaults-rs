@@ -1,11 +1,13 @@
+// SPDX-License-Identifier: MIT
+
 //! Library API for defaults-rs: macOS preferences management in Rust.
 
-mod prefs;
+mod core;
 
-pub use prefs::error::PrefError;
-pub use prefs::types::{Domain, PrefValue, ReadResult};
+pub use core::error::PrefError;
+pub use core::types::{Domain, PrefValue, ReadResult};
 
-pub mod preferences;
+mod preferences;
 pub use preferences::Preferences;
 
 pub mod prettifier;

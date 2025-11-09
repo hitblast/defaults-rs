@@ -1,10 +1,11 @@
+// SPDX-License-Identifier: MIT
+
 #[cfg(feature = "cli")]
 use clap::ArgMatches;
 #[cfg(feature = "cli")]
 use defaults_rs::{
-    Domain, PrefValue, ReadResult, build_cli,
+    Domain, PrefValue, Preferences, ReadResult, build_cli,
     cli::{get_required_arg, print_result},
-    preferences::Preferences,
     prettifier::Prettifier,
 };
 #[cfg(feature = "cli")]

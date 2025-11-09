@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! Error types for preferences management.
 
 use std::fmt;
