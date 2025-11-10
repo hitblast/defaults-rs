@@ -44,7 +44,7 @@ jobs:
       - name: Copy docs to /docs folder
         run: |
           # Build
-          cargo doc --no-deps --package defaults-rs
+          cargo doc --no-default-features --no-deps --package defaults-rs
 
           # Move
           rm -rf docs
