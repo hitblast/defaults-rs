@@ -173,7 +173,6 @@ pub(crate) fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
             unsafe { CFRetain(ptr as *const _ as *mut _) };
             ptr as CFTypeRef
         }
-
         PrefValue::Integer(i) => unsafe {
             CFNumberCreate(
                 kCFAllocatorDefault,
@@ -181,7 +180,6 @@ pub(crate) fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
                 i as *const i64 as *const _,
             ) as CFTypeRef
         },
-
         PrefValue::Float(f) => unsafe {
             CFNumberCreate(
                 kCFAllocatorDefault,
@@ -189,11 +187,9 @@ pub(crate) fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
                 f as *const f64 as *const _,
             ) as CFTypeRef
         },
-
         PrefValue::Boolean(b) => unsafe {
             (if *b { kCFBooleanTrue } else { kCFBooleanFalse }) as CFTypeRef
         },
-
         PrefValue::Array(items) => unsafe {
             let mut cf_items: Vec<CFTypeRef> = items.iter().map(pref_to_cf).collect();
             let arr = CFArrayCreate(
@@ -208,7 +204,6 @@ pub(crate) fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
             }
             arr
         },
-
         PrefValue::Dictionary(map) => unsafe {
             let key_cfs: Vec<CFString> = map.keys().map(|k| CFString::new(k)).collect();
             let mut keys: Vec<CFTypeRef> = key_cfs
@@ -240,13 +235,10 @@ pub(crate) fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
 
             dict
         },
-
         PrefValue::Data(data) => unsafe {
             CFDataCreate(kCFAllocatorDefault, data.as_ptr(), data.len() as isize) as CFTypeRef
         },
-
         PrefValue::Date(dt) => unsafe { CFDateCreate(kCFAllocatorDefault, *dt) as CFTypeRef },
-
         PrefValue::Url(url) => unsafe {
             let cf_url_str = CFString::new(url);
             CFURLCreateWithString(
@@ -255,11 +247,17 @@ pub(crate) fn pref_to_cf(value: &PrefValue) -> CFTypeRef {
                 std::ptr::null(),
             ) as CFTypeRef
         },
-
         PrefValue::Uuid(uuid) => unsafe {
             let cf_uuid_str = CFString::new(uuid);
             CFUUIDCreateFromString(kCFAllocatorDefault, cf_uuid_str.as_concrete_TypeRef())
                 as CFTypeRef
+        },
+        PrefValue::Uid(uid) => unsafe {
+            CFNumberCreate(
+                kCFAllocatorDefault,
+                kCFNumberSInt64Type,
+                uid as *const u64 as *const _,
+            ) as CFTypeRef
         },
     }
 }

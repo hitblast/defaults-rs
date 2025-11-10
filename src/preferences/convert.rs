@@ -1,7 +1,10 @@
-use plist::Value;
-use std::time::{Duration, UNIX_EPOCH};
+use plist::{Uid, Value};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::PrefValue;
+
+// Apple epoch is Jan 1, 2001, which is 978307200 seconds after UNIX_EPOCH
+static APPLE_EPOCH_UNIX: u64 = 978307200;
 
 pub(crate) fn plist_to_prefvalue(val: &Value) -> PrefValue {
     match val {
@@ -15,7 +18,18 @@ pub(crate) fn plist_to_prefvalue(val: &Value) -> PrefValue {
                 .map(|(k, v)| (k.clone(), plist_to_prefvalue(v)))
                 .collect(),
         ),
-        _ => PrefValue::String(format!("{val:?}")),
+        Value::Data(data) => PrefValue::Data(data.clone()),
+        Value::Date(date) => {
+            let system_time: SystemTime = date.to_owned().into();
+            let duration_since_unix = system_time
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f64();
+            let seconds_since_apple_epoch = duration_since_unix - APPLE_EPOCH_UNIX as f64;
+            PrefValue::Date(seconds_since_apple_epoch)
+        }
+        Value::Uid(uid) => PrefValue::Uid(uid.get()),
+        _ => unreachable!(),
     }
 }
 
@@ -33,8 +47,6 @@ pub(crate) fn prefvalue_to_plist(val: &PrefValue) -> Value {
         ),
         PrefValue::Data(data) => Value::Data(data.clone()),
         PrefValue::Date(dt) => {
-            // Apple epoch is Jan 1, 2001, which is 978307200 seconds after UNIX_EPOCH
-            const APPLE_EPOCH_UNIX: u64 = 978307200;
             let secs = APPLE_EPOCH_UNIX as f64 + *dt;
             let system_time = UNIX_EPOCH
                 + Duration::from_secs(secs as u64)
@@ -43,5 +55,6 @@ pub(crate) fn prefvalue_to_plist(val: &PrefValue) -> Value {
         }
         PrefValue::Url(url) => Value::String(url.clone()),
         PrefValue::Uuid(uuid) => Value::String(uuid.clone()),
+        PrefValue::Uid(uid) => Value::Uid(Uid::new(*uid)),
     }
 }

@@ -50,6 +50,7 @@ pub(crate) fn apple_style_string(val: &PrefValue, indent: usize) -> String {
         PrefValue::Date(dt) => format!("<Date: {}>", dt),
         PrefValue::Url(url) => format!("<Url: {}>", url),
         PrefValue::Uuid(uuid) => format!("<Uuid: {}>", uuid),
+        PrefValue::Uid(uid) => format!("<Uid: {}>", uid),
     }
 }
 

@@ -68,6 +68,7 @@ pub enum PrefValue {
     Date(f64),     // CFDate (CFAbsoluteTime)
     Url(String),   // CFURL
     Uuid(String),  // CFUUID
+    Uid(u64),
 }
 
 impl Default for PrefValue {
@@ -115,6 +116,9 @@ impl std::fmt::Display for PrefValue {
             PrefValue::Uuid(uuid) => {
                 write!(f, "<Uuid: {}>", uuid)
             }
+            PrefValue::Uid(uid) => {
+                write!(f, "<Uid: {}>", uid)
+            }
         }
     }
 }
@@ -133,6 +137,7 @@ impl PrefValue {
             PrefValue::Date(_) => "date",
             PrefValue::Url(_) => "url",
             PrefValue::Uuid(_) => "uuid",
+            PrefValue::Uid(_) => "uid",
         }
     }
 }
