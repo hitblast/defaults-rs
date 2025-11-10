@@ -118,7 +118,18 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
             }
         }
         _ => {
-            let domain = parse_domain_or_path(sub_m).await;
+            let domain: Domain = parse_domain_or_path(sub_m).await;
+
+            if let Domain::User(ref domain) = domain {
+                let domains = Preferences::list_domains().await.unwrap_or_default();
+                if !domains.contains(&Domain::User(domain.clone())) {
+                    use std::process::exit;
+
+                    eprintln!("Error: Domain {domain} does not exist!");
+                    exit(1);
+                }
+            }
+
             match cmd {
                 "read" => {
                     let key = sub_m.get_one::<String>("key").map(String::as_str);
