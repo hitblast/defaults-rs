@@ -84,6 +84,11 @@ fn parse_domain_or_path(sub_m: &ArgMatches) -> Result<Domain> {
                     .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
             {
                 bail!("invalid domain or plist path: {other}");
+            } else if !Preferences::list_domains()?
+                .iter()
+                .any(|dom| dom.to_string() == other)
+            {
+                bail!("domain '{domain}' does not exist!")
             }
             Ok(Domain::User(other.to_string()))
         }

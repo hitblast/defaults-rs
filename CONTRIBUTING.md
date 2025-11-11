@@ -5,9 +5,14 @@ This is the standard contribution/development guidelines for the project. You ma
 ## Table of Contents
 
 - [Getting Started](#getting-started)
+  - [Cloning the repository](#cloning-the-repository)
+  - [Preparing the environment](#preparing-the-environment)
+  - [Project Structure](#project-structure)
 - [Production Release Workflow](#production-release-workflow)
+  - [Refactoring](#refactoring)
+  - [Build Reproduction](#build-reproduction)
 - [Pull Request Guidelines](#pull-request-guidelines)
-- [License](#licensing)
+- [License](#license)
 
 ## Getting Started
 
@@ -39,19 +44,48 @@ Working on this project will require a few Rust components beforehand:
 - [clippy](https://github.com/rust-lang/rust-clippy)
 - [rustfmt](https://github.com/rust-lang/rustfmt)
 
+### Project Structure
+
+The main source code for `defaults-rs` is located in the `src/` directory. Here is an overview of the project's structure:
+
+```
+defaults-rs/
+├── src/
+│   ├── cli.rs            # CLI definition and argument helpers (clap-based)
+│   ├── core/
+│   │   ├── convert.rs    # CoreFoundation <-> PrefValue conversion logic
+│   │   ├── foundation.rs # CoreFoundation-based preferences backend
+│   │   ├── mod.rs        # Core module declarations
+│   │   └── types.rs      # PrefValue type definitions
+│   ├── lib.rs            # Library API entry point
+│   ├── main.rs           # CLI entry point
+│   ├── preferences/
+│   │   ├── convert.rs    # Plist <-> PrefValue conversion logic
+│   │   ├── mod.rs        # Preferences API implementation
+│   │   └── types.rs      # Domain and FindMatch types
+│   └── prettifier.rs     # Apple-style pretty-printing for CLI output
+├── Cargo.toml            # Rust crate manifest
+├── LICENSE               # MIT License
+└── README.md             # Project documentation
+```
+
+- **src/cli.rs**: Defines the command-line interface, subcommands, and argument parsing.
+- **src/core/**: Contains low-level CoreFoundation integration and type conversions.
+- **src/preferences/**: Implements business logic for reading, writing, importing/exporting, and batch operations on preferences.
+- **src/prettifier.rs**: Formats output in Apple-style for CLI display.
+- **src/lib.rs**: Exposes the public library API.
+- **src/main.rs**: Entry point for the CLI application.
+
 ## Production Release Workflow
 
 This chain of commands can be used to fully test and build the final product.
 
-### Testing
+### Refactoring
 
-```bash
-# raw command
-$ cargo fmt --all -- --check && cargo clippy && cargo build
-```
+Review [this GitHub Actions workflow](./.github/workflows/refactor.yml) for refactoring reference.
 
 > [!NOTE]
-> The unit tests in the CI workflow are done using an **Apple Silicon M1 (3-core)** runner provided by GitHub Actions. See [this page](https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources) in GitHub's documentation for more information on all the runners. If the runners used in this project get outdated and don't get a bump, you may suggest one through [GitHub Issues](https://github.com/hitblast/defaults-rs/issues/new).
+> All the workflows in this repository are run on an **Apple Silicon M1 (3-core)** runner provided by GitHub Actions. See [this page](https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources) in GitHub's documentation for more information on all the runners. If the runners used in this project get outdated and don't get a bump, you may suggest one through [GitHub Issues](https://github.com/hitblast/defaults-rs/issues/new).
 
 ### Build Reproduction
 
@@ -62,18 +96,6 @@ $ cargo build --release --verbose --locked
 ```
 
 The major part of the release automation is currently done with [GitHub Actions]() via the [following workflow](./.github/workflows/release.yml) so, you can have a look at it to view the entire pipeline.
-
-The unit testing is done via [this workflow.](./.github/workflows/tests.yml)
-
-### Code Formatting
-
-`defaults-rs` uses basic Rust formatting for code reliability and maintainability. This ensures that the codebase remains clean, readable, and consistent across different contributors.
-
-Simply run the following command to format the code:
-
-```bash
-$ cargo fmt --all
-```
 
 ## Pull Request Guidelines
 
@@ -88,7 +110,7 @@ Before submitting a pull request, please ensure the following:
 Pull requests and issues must have the following pattern:
 
 ```
-(<type>) <title>
+<type>: <title>
 ```
 
 Possible types include:

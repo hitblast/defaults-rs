@@ -174,12 +174,7 @@ impl Preferences {
     pub fn import(domain: Domain, import_path: &str) -> Result<()> {
         let data = fs::read(import_path)?;
 
-        // Try XML first
-        let plist_val = if let Ok(v) = Value::from_reader_xml(std::io::Cursor::new(&data)) {
-            v
-        } else {
-            Value::from_reader(Cursor::new(&data))?
-        };
+        let plist_val = Value::from_reader(Cursor::new(&data))?;
 
         let dict = match plist_val {
             Value::Dictionary(d) => d,
