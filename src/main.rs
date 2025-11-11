@@ -52,24 +52,24 @@ fn parse_domain_or_path(sub_m: &ArgMatches) -> Result<Domain> {
     // filepath check
     if let Ok(path) = Path::new(domain.as_str()).canonicalize()
         && path.is_file()
-            && (path.starts_with(format!(
-                "{}/Library/Preferences/",
-                home_dir.to_string_lossy()
-            )) || path.starts_with("/Library/Preferences/")
-                || path.starts_with("/System/Library/Preferences/")
-                || path
-                    == Path::new(&format!(
-                        "{}/Library/Preferences/.GlobalPreferences.plist",
-                        home_dir.to_string_lossy()
-                    ))
-                || path == Path::new("/Library/Preferences/.GlobalPreferences.plist"))
-        {
-            domain = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| anyhow!("could not get file stem"))?
-                .to_string();
-        }
+        && (path.starts_with(format!(
+            "{}/Library/Preferences/",
+            home_dir.to_string_lossy()
+        )) || path.starts_with("/Library/Preferences/")
+            || path.starts_with("/System/Library/Preferences/")
+            || path
+                == Path::new(&format!(
+                    "{}/Library/Preferences/.GlobalPreferences.plist",
+                    home_dir.to_string_lossy()
+                ))
+            || path == Path::new("/Library/Preferences/.GlobalPreferences.plist"))
+    {
+        domain = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow!("could not get file stem"))?
+            .to_string();
+    }
 
     // domain check
     match domain.as_str() {
