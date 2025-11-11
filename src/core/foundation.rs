@@ -65,7 +65,7 @@ pub(crate) fn read_pref(domain: &str, key: &str) -> Result<PrefValue> {
             domain_cf.as_concrete_TypeRef(),
         );
         if raw.is_null() {
-            bail!("Key not found");
+            bail!("Key not found for domain {domain}: {key}");
         }
         Ok(cf_to_pref(raw as _))
     }
