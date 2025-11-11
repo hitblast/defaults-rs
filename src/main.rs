@@ -50,8 +50,8 @@ fn parse_domain_or_path(sub_m: &ArgMatches) -> Result<Domain> {
         .to_string();
 
     // filepath check
-    if let Ok(path) = Path::new(domain.as_str()).canonicalize() {
-        if path.is_file()
+    if let Ok(path) = Path::new(domain.as_str()).canonicalize()
+        && path.is_file()
             && (path.starts_with(format!(
                 "{}/Library/Preferences/",
                 home_dir.to_string_lossy()
@@ -70,7 +70,6 @@ fn parse_domain_or_path(sub_m: &ArgMatches) -> Result<Domain> {
                 .ok_or_else(|| anyhow!("could not get file stem"))?
                 .to_string();
         }
-    }
 
     // domain check
     match domain.as_str() {
