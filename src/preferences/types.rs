@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: MIT
+
+use crate::PrefValue;
+
 /// Preferences domain (user or global).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Domain {
     /// A user domain, e.g., "com.apple.finder"
     User(String),
-    /// The global preferences domain (".GlobalPreferences")
+    /// The global preferences domain / NSGlobalDomain (".GlobalPreferences")
     Global,
 }
 
@@ -29,6 +33,6 @@ impl std::fmt::Display for Domain {
 /// Result of a find operation.
 #[derive(Debug)]
 pub struct FindMatch {
-    pub key_path: String,
-    pub value: String,
+    pub key: String,
+    pub value: PrefValue,
 }

@@ -133,7 +133,7 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
             for (domain, matches) in results {
                 println!("Found {} matches for domain `{}`:", matches.len(), domain);
                 for m in matches {
-                    println!("    {} = {}", m.key_path, m.value);
+                    println!("    {} = {}", m.key, m.value);
                 }
                 println!();
             }

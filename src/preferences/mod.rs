@@ -82,8 +82,8 @@ impl Preferences {
                     };
                     if contains_word(k, word_lower) {
                         matches.push(FindMatch {
-                            key_path: new_key_path.clone(),
-                            value: v.to_string(),
+                            key: new_key_path.clone(),
+                            value: v.clone(),
                         });
                     }
                     Self::find_in_value(v, word_lower, new_key_path, matches);
@@ -96,11 +96,10 @@ impl Preferences {
                 }
             }
             _ => {
-                let val_str = val.to_string();
-                if contains_word(&val_str, word_lower) {
+                if contains_word(&val.to_string(), word_lower) {
                     matches.push(FindMatch {
-                        key_path,
-                        value: val_str,
+                        key: key_path.clone(),
+                        value: val.clone(),
                     });
                 }
             }
