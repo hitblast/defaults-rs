@@ -107,17 +107,15 @@ impl Preferences {
     }
 
     /// Read a value from the given domain and key.
-    ///
-    /// If `key` is `None`, returns the entire domain as a `plist::Value`.
-    /// If `key` is provided, returns the value at that key as a `PrefValue`.
-    pub fn read(domain: Domain, key: Option<&str>) -> Result<PrefValue> {
+    pub fn read(domain: Domain, key: &str) -> Result<PrefValue> {
         let cf_name = &domain.get_cf_name();
+        foundation::read_pref(cf_name, key)
+    }
 
-        if let Some(key) = key {
-            foundation::read_pref(cf_name, key)
-        } else {
-            foundation::read_pref_domain(cf_name)
-        }
+    /// Read an entire domain.
+    pub fn read_domain(domain: Domain) -> Result<PrefValue> {
+        let cf_name = &domain.get_cf_name();
+        foundation::read_pref_domain(cf_name)
     }
 
     /// Write a value to the given domain and key.

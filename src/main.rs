@@ -144,14 +144,19 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
 
             match cmd {
                 "read" => {
-                    let key = sub_m.get_one::<String>("key").map(String::as_str);
-                    let val = Preferences::read(domain, key)?;
+                    let val = if let Some(key) = sub_m.get_one::<String>("key").map(String::as_str)
+                    {
+                        Preferences::read(domain, key)?
+                    } else {
+                        Preferences::read_domain(domain)?
+                    };
+
                     println!("{}", apple_style_string(&val, 0));
                     Ok(())
                 }
                 "read-type" => {
                     let key = get_required_arg(sub_m, "key");
-                    let val = Preferences::read(domain, Some(key))?;
+                    let val = Preferences::read(domain, key)?;
                     println!("{}", val.get_type());
                     Ok(())
                 }
