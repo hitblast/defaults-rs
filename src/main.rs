@@ -95,21 +95,19 @@ fn from_typeflag_str(type_flag: &str, s: &str) -> Result<PrefValue> {
         "int" => {
             let val = s
                 .parse::<i64>()
-                .map_err(|e| anyhow::anyhow!("Failed to parse int: {e}"))?;
+                .map_err(|e| anyhow!("Failed to parse int: {e}"))?;
             Ok(PrefValue::Integer(val))
         }
         "float" => {
             let val = s
                 .parse::<f64>()
-                .map_err(|e| anyhow::anyhow!("Failed to parse float: {e}"))?;
+                .map_err(|e| anyhow!("Failed to parse float: {e}"))?;
             Ok(PrefValue::Float(val))
         }
         "bool" => match s {
             "true" | "1" => Ok(PrefValue::Boolean(true)),
             "false" | "0" => Ok(PrefValue::Boolean(false)),
-            _ => Err(anyhow::anyhow!(
-                "Invalid boolean value (use true/false or 1/0)"
-            )),
+            _ => bail!("Invalid boolean value (use true/false or 1/0)"),
         },
         "string" => Ok(PrefValue::String(s.to_string())),
         other => bail!("Unsupported type: {other}"),
