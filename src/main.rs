@@ -40,6 +40,8 @@ fn main() {
 /// Returns a domain object based on the kind of the argument that is passed.
 #[cfg(feature = "cli")]
 fn parse_domain_or_path(sub_m: &ArgMatches) -> Result<Domain> {
+    use defaults_rs::Domain;
+
     let home_dir = dirs::home_dir().ok_or_else(|| anyhow!("could not resolve home directory"))?;
 
     let mut domain = sub_m

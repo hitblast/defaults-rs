@@ -8,6 +8,7 @@
 //! It acts as the main interface between the CLI/library and the backend (CoreFoundation or file-based).
 
 mod convert;
+pub mod types;
 
 use anyhow::{Context, Result, bail};
 use std::{
@@ -18,7 +19,7 @@ use std::{
 };
 
 use crate::{
-    core::types::{Domain, FindMatch, PrefValue},
+    Domain, FindMatch, PrefValue,
     preferences::convert::{plist_to_prefvalue, prefvalue_to_plist},
 };
 use plist::Value;

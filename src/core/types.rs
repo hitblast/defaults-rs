@@ -6,34 +6,6 @@
 
 use std::collections::HashMap;
 
-/// Preferences domain (user or global).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Domain {
-    /// A user domain, e.g., "com.apple.finder"
-    User(String),
-    /// The global preferences domain (".GlobalPreferences")
-    Global,
-}
-
-impl Domain {
-    /// Returns the CoreFoundation name for a given domain.
-    pub fn get_cf_name(&self) -> String {
-        match &self {
-            Domain::Global => String::from(".GlobalPreferences"),
-            Domain::User(name) => name.clone(),
-        }
-    }
-}
-
-impl std::fmt::Display for Domain {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Domain::User(s) => write!(f, "{}", s),
-            Domain::Global => write!(f, "NSGlobalDomain"),
-        }
-    }
-}
-
 /// Value stored in preferences.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PrefValue {
@@ -84,7 +56,7 @@ impl std::fmt::Display for PrefValue {
                 )
             }
             PrefValue::Data(data) => {
-                write!(f, "<Data: {} bytes>", data.len())
+                write!(f, "<Data: length {} bytes>", data.len())
             }
             PrefValue::Date(dt) => {
                 write!(f, "<Date: {}>", dt)
@@ -119,11 +91,4 @@ impl PrefValue {
             PrefValue::Uid(_) => "uid",
         }
     }
-}
-
-/// Result of a find operation.
-#[derive(Debug)]
-pub struct FindMatch {
-    pub key_path: String,
-    pub value: String,
 }
