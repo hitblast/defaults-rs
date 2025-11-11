@@ -4,7 +4,6 @@
 
 mod core;
 
-pub use core::error::PrefError;
 pub use core::types::{Domain, PrefValue};
 
 mod preferences;

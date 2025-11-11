@@ -4,7 +4,7 @@
 //!
 //! The batch operations in the API (batch-read and batch-delete) work on the [`Domain`] and [`PrefValue`] types.
 
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
 /// Preferences domain (user or global).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -13,25 +13,14 @@ pub enum Domain {
     User(String),
     /// The global preferences domain (".GlobalPreferences")
     Global,
-    /// A direct path to a plist file
-    Path(PathBuf),
 }
 
 impl Domain {
-    /// Returns the filesystem path for a given domain.
-    pub fn get_path(&self) -> PathBuf {
-        match &self {
-            Domain::Path(path) => path.clone(),
-            _ => unreachable!("path domains are not supported for global or user domains"),
-        }
-    }
-
     /// Returns the CoreFoundation name for a given domain.
     pub fn get_cf_name(&self) -> String {
         match &self {
             Domain::Global => String::from(".GlobalPreferences"),
             Domain::User(name) => name.clone(),
-            Domain::Path(_) => unreachable!("no CF name for path-based domains"),
         }
     }
 }
@@ -41,7 +30,6 @@ impl std::fmt::Display for Domain {
         match self {
             Domain::User(s) => write!(f, "{}", s),
             Domain::Global => write!(f, "NSGlobalDomain"),
-            Domain::Path(p) => write!(f, "{}", p.display()),
         }
     }
 }
@@ -138,12 +126,4 @@ impl PrefValue {
 pub struct FindMatch {
     pub key_path: String,
     pub value: String,
-}
-
-/// Struct representing a loaded plist, including its original owner and whether it was read as binary.
-#[derive(Debug)]
-pub struct LoadedPlist {
-    pub plist: PrefValue,
-    pub orig_owner: Option<(u32, u32)>,
-    pub is_binary: bool,
 }

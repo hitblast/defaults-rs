@@ -139,10 +139,10 @@ Please refer to the [API reference](https://hitblast.github.io/defaults-rs) for 
 use defaults_rs::{Domain, PrefValue, Preferences};
 
 #[tokio::main]  // `cargo add tokio`
-async fn main() {
+fn main() {
     // Read a value
     let value = Preferences::read(Domain::User("com.apple.dock".into()), Some("tilesize"))
-        .await
+
         .unwrap();
 
     // Write a value
@@ -151,12 +151,12 @@ async fn main() {
         "tilesize",
         PrefValue::Integer(48),
     )
-    .await
+
     .unwrap();
 
     // Delete a key
     Preferences::delete(Domain::User("com.apple.dock".into()), Some("tilesize"))
-        .await
+
         .unwrap();
 }
 ```
@@ -168,7 +168,7 @@ use anyhow::Result;  // `cargo add anyhow`
 use defaults_rs::{Domain, PrefValue, Preferences};
 
 #[tokio::main]  // `cargo add tokio`
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     // Batch write (only updates designated keys)
     let write_batch = vec![
         (
@@ -187,7 +187,7 @@ async fn main() -> Result<()> {
             PrefValue::Integer(25),
         ),
     ];
-    Preferences::write_batch(write_batch).await?;
+    Preferences::write_batch(write_batch)?;
 
     // Batch read:
     let read_batch = vec![
@@ -197,7 +197,7 @@ async fn main() -> Result<()> {
         ),
         (Domain::User("com.apple.keyboard".into()), None), // Read entire domain
     ];
-    let results = Preferences::read_batch(read_batch).await?;
+    let results = Preferences::read_batch(read_batch)?;
     for (domain, key, result) in results {
         match key {
             None => println!("Domain: {:?}, Full plist: {:?}", domain, result),
@@ -217,7 +217,7 @@ async fn main() -> Result<()> {
         ),
         (Domain::User("com.apple.keyboard".into()), None), // Delete entire domain file
     ];
-    Preferences::delete_batch(delete_batch).await?;
+    Preferences::delete_batch(delete_batch)?;
 
     Ok(())
 }

@@ -7,50 +7,49 @@ use defaults_rs::{
     Domain, PrefValue, Preferences, build_cli,
     cli::{get_required_arg, print_result},
 };
+
 #[cfg(feature = "cli")]
 use std::path::PathBuf;
-#[cfg(feature = "cli")]
-use tokio::fs;
-
 #[cfg(feature = "cli")]
 mod prettifier;
 #[cfg(feature = "cli")]
 use prettifier::apple_style_string;
 
 /// main runner func
-#[tokio::main]
 #[cfg(feature = "cli")]
-async fn main() {
+fn main() {
     let matches = build_cli().get_matches();
 
     match matches.subcommand() {
-        Some((cmd, sub_m)) => handle_subcommand(cmd, sub_m).await,
+        Some((cmd, sub_m)) => handle_subcommand(cmd, sub_m),
         None => unreachable!("Subcommand required"),
     }
 }
 
 /// Returns a domain object based on the kind of the argument that is passed.
 #[cfg(feature = "cli")]
-async fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
-    let domain = sub_m.get_one::<String>("domain").expect("domain required");
-    let path = PathBuf::from(domain);
+fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
+    let domain_input = sub_m.get_one::<String>("domain").expect("domain required");
 
-    // Try as-is
-    if fs::try_exists(&path).await.unwrap() {
-        return Domain::Path(path);
-    }
+    let binding = PathBuf::from(domain_input);
+    let domain = binding.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
-    // Try with .plist extension if not already present
-    if path.extension().and_then(|e| e.to_str()) != Some("plist") {
-        let mut with_ext = path.clone();
-        with_ext.set_extension("plist");
-        if with_ext.exists() {
-            return Domain::Path(with_ext);
-        }
-    }
+    // // Try as-is
+    // if fs::try_exists(&path).unwrap() {
+    //     return Domain::Path(path);
+    // }
+
+    // // Try with .plist extension if not already present
+    // if path.extension().and_then(|e| e.to_str()) != Some("plist") {
+    //     let mut with_ext = path.clone();
+    //     with_ext.set_extension("plist");
+    //     if with_ext.exists() {
+    //         return Domain::Path(with_ext);
+    //     }
+    // }
 
     // Fallback to domain logic
-    match domain.as_str() {
+    match domain {
         "-g" | "NSGlobalDomain" | "-globalDomain" => Domain::Global,
         other => {
             if other.contains("..")
@@ -92,9 +91,9 @@ fn from_typeflag_str(type_flag: &str, s: &str) -> Result<PrefValue, String> {
 
 /// Function to handle subcommand runs.
 #[cfg(feature = "cli")]
-async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
+fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
     match cmd {
-        "domains" => match Preferences::list_domains().await {
+        "domains" => match Preferences::list_domains() {
             Ok(domains) => {
                 for dom in domains {
                     println!("{dom}");
@@ -104,7 +103,7 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
         },
         "find" => {
             let word = get_required_arg(sub_m, "word");
-            match Preferences::find(word).await {
+            match Preferences::find(word) {
                 Ok(results) => {
                     for (domain, matches) in results {
                         println!("Found {} matches for domain `{}`:", matches.len(), domain);
@@ -118,22 +117,23 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
             }
         }
         _ => {
-            let domain: Domain = parse_domain_or_path(sub_m).await;
+            let domain: Domain = parse_domain_or_path(sub_m);
 
-            if let Domain::User(ref domain) = domain {
-                let domains = Preferences::list_domains().await.unwrap_or_default();
-                if !domains.contains(&Domain::User(domain.clone())) {
-                    use std::process::exit;
+            // if let Domain::User(ref domain) = domain {
+            //     let domains = Preferences::list_domains().unwrap_or_default();
 
-                    eprintln!("Error: Domain {domain} does not exist!");
-                    exit(1);
-                }
-            }
+            //     if !domains.contains(&Domain::User(domain.clone())) {
+            //         use std::process::exit;
+
+            //         eprintln!("Error: Domain {domain} does not exist!");
+            //         exit(1);
+            //     }
+            // }
 
             match cmd {
                 "read" => {
                     let key = sub_m.get_one::<String>("key").map(String::as_str);
-                    match Preferences::read(domain, key).await {
+                    match Preferences::read(domain, key) {
                         Ok(val) => {
                             println!("{}", apple_style_string(&val, 0))
                         }
@@ -142,7 +142,7 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
                 }
                 "read-type" => {
                     let key = get_required_arg(sub_m, "key");
-                    match Preferences::read(domain, Some(key)).await {
+                    match Preferences::read(domain, Some(key)) {
                         Ok(val) => println!("{}", val.get_type()),
                         Err(e) => eprintln!("Error: {e}"),
                     }
@@ -171,24 +171,24 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
                         std::process::exit(1)
                     });
 
-                    print_result(Preferences::write(domain, key, value).await);
+                    print_result(Preferences::write(domain, key, value));
                 }
                 "delete" => {
                     let key = sub_m.get_one::<String>("key").map(String::as_str);
-                    print_result(Preferences::delete(domain, key).await);
+                    print_result(Preferences::delete(domain, key));
                 }
                 "rename" => {
                     let old_key = get_required_arg(sub_m, "old_key");
                     let new_key = get_required_arg(sub_m, "new_key");
-                    print_result(Preferences::rename(domain, old_key, new_key).await);
+                    print_result(Preferences::rename(domain, old_key, new_key));
                 }
                 "import" => {
                     let path = get_required_arg(sub_m, "path");
-                    print_result(Preferences::import(domain, path).await);
+                    print_result(Preferences::import(domain, path));
                 }
                 "export" => {
                     let path = get_required_arg(sub_m, "path");
-                    print_result(Preferences::export(domain, path).await);
+                    print_result(Preferences::export(domain, path));
                 }
                 _ => unreachable!(),
             }
