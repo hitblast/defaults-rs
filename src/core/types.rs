@@ -4,10 +4,7 @@
 //!
 //! The batch operations in the API (batch-read and batch-delete) work on the [`Domain`] and [`PrefValue`] types.
 
-use once_cell::sync::Lazy;
 use std::{collections::HashMap, path::PathBuf};
-
-static HOME: Lazy<String> = Lazy::new(|| dirs::home_dir().unwrap().display().to_string());
 
 /// Preferences domain (user or global).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -17,21 +14,15 @@ pub enum Domain {
     /// The global preferences domain (".GlobalPreferences")
     Global,
     /// A direct path to a plist file
-    Path(std::path::PathBuf),
+    Path(PathBuf),
 }
 
 impl Domain {
     /// Returns the filesystem path for a given domain.
     pub fn get_path(&self) -> PathBuf {
         match &self {
-            Domain::Global => PathBuf::from(format!(
-                "{}/Library/Preferences/.GlobalPreferences.plist",
-                *HOME
-            )),
-            Domain::User(name) => {
-                PathBuf::from(format!("{}/Library/Preferences/{}.plist", *HOME, name))
-            }
             Domain::Path(path) => path.clone(),
+            _ => unreachable!("path domains are not supported for global or user domains"),
         }
     }
 
@@ -64,10 +55,10 @@ pub enum PrefValue {
     Boolean(bool),
     Array(Vec<PrefValue>),
     Dictionary(HashMap<String, PrefValue>),
-    Data(Vec<u8>), // CFData
-    Date(f64),     // CFDate (CFAbsoluteTime)
-    Url(String),   // CFURL
-    Uuid(String),  // CFUUID
+    Data(Vec<u8>),
+    Date(f64),
+    Url(String),
+    Uuid(String),
     Uid(u64),
 }
 
