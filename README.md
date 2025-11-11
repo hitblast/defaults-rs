@@ -20,6 +20,15 @@
 > [!WARNING]
 > Some specs might not be applicable (e.g. adding to dict) currently for the CLI side, so the API side is exposed fully for proper extensibility.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Usage](#usage)
+- [Rust API Usage](#rust-api-usage)
+- [Why defaults-rs](#why-defaults-rs)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Installation
 
 ### Using `brew`:
@@ -41,18 +50,15 @@ $ cargo install defaults-rs
 $ mise use -g cargo:defaults-rs
 ```
 
-## CLI Usage
+## Usage
 
 The CLI command is `drs`. It closely mimics the original `defaults` tool.
-
-### Examples
 
 #### Read a key (domain or path)
 
 ```sh
 $ drs read com.apple.dock tilesize
 $ drs read ~/Library/Preferences/com.apple.dock.plist tilesize
-$ drs read ./custom.plist mykey
 $ drs read com.apple.dock.plist tilesize   # if file exists, treated as path; else as domain
 ```
 
@@ -62,7 +68,6 @@ $ drs read com.apple.dock.plist tilesize   # if file exists, treated as path; el
 $ drs write com.apple.dock tilesize -i 48
 $ drs write com.apple.dock tilesize --int 48
 $ drs write ~/Library/Preferences/com.apple.dock.plist tilesize --int 48
-$ drs write ./custom.plist mykey --string "hello"
 ```
 
 #### Delete a key
@@ -70,7 +75,6 @@ $ drs write ./custom.plist mykey --string "hello"
 ```sh
 $ drs delete com.apple.dock tilesize
 $ drs delete ~/Library/Preferences/com.apple.dock.plist tilesize
-$ drs delete ./custom.plist mykey
 ```
 
 #### Read the whole domain
@@ -78,7 +82,6 @@ $ drs delete ./custom.plist mykey
 ```sh
 $ drs read com.apple.dock
 $ drs read ~/Library/Preferences/com.apple.dock.plist
-$ drs read ./custom.plist
 ```
 
 #### List all entries in all domains containing word
@@ -111,7 +114,6 @@ $ drs read-type com.apple.dock tilesize
 ```sh
 $ drs rename com.apple.dock oldKey newKey
 $ drs rename ~/Library/Preferences/com.apple.dock.plist oldKey newKey
-$ drs rename ./custom.plist oldKey newKey
 ```
 
 #### Import/export a domain
@@ -121,9 +123,9 @@ $ drs import com.apple.dock ./mysettings.plist
 $ drs export com.apple.dock ./backup.plist
 ```
 
-## Rust API
+## Rust API Usage
 
-To access the developer-side API for `defaults-rs`, run the following command and add it to your Cargo project:
+In order to use the Rust API for defaults-rs, run this command in your project directory:
 
 ```sh
 $ cargo add defaults-rs --no-default-features
@@ -220,6 +222,14 @@ async fn main() -> Result<()> {
     Ok(())
 }
 ```
+
+## Why defaults-rs
+
+*literally a personal take section, but here you go if you wanna listen to some yapping:*
+
+I have made defaults-rs because I needed a handy wrapper for interacting with the preferences system the CoreFoundation framework builds up on macOS. Currently, defaults-rs serves as the [backend for cutler](https://cutlercli.github.io) when it comes to backing up and restoring system preferences.
+
+I also found making this tool as a great way to experiment with CoreFoundation bindings and learn more about Objective-C concepts in general.
 
 ## Contributing
 
