@@ -2,7 +2,7 @@
 
 # 🍎 defaults-rs
 
-#### `defaults` replacement for macOS
+#### Rust-based interface to a user's defaults on macOS
 
 ![Crates.io Total Downloads](https://img.shields.io/crates/d/defaults-rs)
 [![Refactor CI](https://github.com/hitblast/defaults-rs/actions/workflows/refactor.yml/badge.svg)](https://github.com/hitblast/defaults-rs/actions/workflows/refactor.yml)
@@ -13,7 +13,7 @@
 
 - Read, write, delete, rename, import/export, and inspect preferences.
 - Supports user/global/path domains.
-- Supports *all* plist value types.
+- Supports *all* plist value types (API).
 - Pretty-printing and better logging than the original.
 - Dynamically chooses between XML and binary PLIST data formats.
 
@@ -133,95 +133,7 @@ $ cargo add defaults-rs --no-default-features
 
 Please refer to the [API reference](https://hitblast.github.io/defaults-rs) for more information about all the available functions.
 
-### Example
-
-```rust
-use defaults_rs::{Domain, PrefValue, Preferences};
-
-#[tokio::main]  // `cargo add tokio`
-fn main() {
-    // Read a value
-    let value = Preferences::read(Domain::User("com.apple.dock".into()), Some("tilesize"))
-
-        .unwrap();
-
-    // Write a value
-    Preferences::write(
-        Domain::User("com.apple.dock".into()),
-        "tilesize",
-        PrefValue::Integer(48),
-    )
-
-    .unwrap();
-
-    // Delete a key
-    Preferences::delete(Domain::User("com.apple.dock".into()), Some("tilesize"))
-
-        .unwrap();
-}
-```
-
-The API also provides unified batch functions which can significantly reduce the amount of I/O per read/write/delete if you want to do multiple queries.
-
-```rust
-use anyhow::Result;  // `cargo add anyhow`
-use defaults_rs::{Domain, PrefValue, Preferences};
-
-#[tokio::main]  // `cargo add tokio`
-fn main() -> Result<()> {
-    // Batch write (only updates designated keys)
-    let write_batch = vec![
-        (
-            Domain::User("com.apple.dock".into()),
-            "tilesize".into(),
-            PrefValue::Integer(48),
-        ),
-        (
-            Domain::User("com.apple.dock".into()),
-            "autohide".into(),
-            PrefValue::Boolean(true),
-        ),
-        (
-            Domain::User("com.apple.keyboard".into()),
-            "InitialKeyRepeat".into(),
-            PrefValue::Integer(25),
-        ),
-    ];
-    Preferences::write_batch(write_batch)?;
-
-    // Batch read:
-    let read_batch = vec![
-        (
-            Domain::User("com.apple.dock".into()),
-            Some("tilesize".into()),
-        ),
-        (Domain::User("com.apple.keyboard".into()), None), // Read entire domain
-    ];
-    let results = Preferences::read_batch(read_batch)?;
-    for (domain, key, result) in results {
-        match key {
-            None => println!("Domain: {:?}, Full plist: {:?}", domain, result),
-            Some(k) => println!("Domain: {:?}, Key: {:?}, Value: {:?}", domain, k, result),
-        }
-    }
-
-    // Batch delete:
-    let delete_batch = vec![
-        (
-            Domain::User("com.apple.dock".into()),
-            Some("tilesize".into()),
-        ),
-        (
-            Domain::User("com.apple.dock".into()),
-            Some("autohide".into()),
-        ),
-        (Domain::User("com.apple.keyboard".into()), None), // Delete entire domain file
-    ];
-    Preferences::delete_batch(delete_batch)?;
-
-    Ok(())
-}
-```
+For examples, check out: [examples/](https://github.com/hitblast/defaults-rs/tree/master/examples)
 
 ## Why defaults-rs
 
