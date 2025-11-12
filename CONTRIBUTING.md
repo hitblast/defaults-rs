@@ -25,7 +25,7 @@ The prerequisites are as follows:
 
 ### Cloning the repository
 
-Once you have ensured the prerequisites, fork the repository [from here](https://github.com/hitblast/defaults-rs/fork) and clone it using the following command:
+Once you have ensured the prerequisites, fork the repository [from here](https://github.com/cutlerHQ/defaults-rs/fork) and clone it using the following command:
 
 ```bash
 # https
@@ -85,7 +85,7 @@ This chain of commands can be used to fully test and build the final product.
 Review [this GitHub Actions workflow](./.github/workflows/refactor.yml) for refactoring reference.
 
 > [!NOTE]
-> All the workflows in this repository are run on an **Apple Silicon M1 (3-core)** runner provided by GitHub Actions. See [this page](https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources) in GitHub's documentation for more information on all the runners. If the runners used in this project get outdated and don't get a bump, you may suggest one through [GitHub Issues](https://github.com/hitblast/defaults-rs/issues/new).
+> All the workflows in this repository are run on an **Apple Silicon M1 (3-core)** runner provided by GitHub Actions. See [this page](https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners#supported-runners-and-hardware-resources) in GitHub's documentation for more information on all the runners. If the runners used in this project get outdated and don't get a bump, you may suggest one through [GitHub Issues](https://github.com/cutlerHQ/defaults-rs/issues/new).
 
 ### Build Reproduction
 
@@ -125,4 +125,4 @@ Possible types include:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/hitblast/defaults-rs/blob/main/LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/cutlerHQ/defaults-rs/blob/main/LICENSE) file for details.

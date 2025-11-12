@@ -5,7 +5,7 @@
 #### Open-source interface to a user's defaults on macOS
 
 ![Crates.io Total Downloads](https://img.shields.io/crates/d/defaults-rs)
-[![Refactor CI](https://github.com/hitblast/defaults-rs/actions/workflows/refactor.yml/badge.svg)](https://github.com/hitblast/defaults-rs/actions/workflows/refactor.yml)
+[![Refactor CI](https://github.com/cutlerHQ/defaults-rs/actions/workflows/refactor.yml/badge.svg)](https://github.com/cutlerHQ/defaults-rs/actions/workflows/refactor.yml)
 
 <img src="assets/demo.gif">
 
@@ -129,9 +129,9 @@ In order to use the Rust API for defaults-rs, run this command in your project d
 $ cargo add defaults-rs --no-default-features
 ```
 
-Please refer to the [API reference](https://hitblast.github.io/defaults-rs) for more information about all the available functions.
+Please refer to the [API reference](https://cutlerhq.github.io/defaults-rs) for more information about all the available functions.
 
-For examples, check out: [examples/](https://github.com/hitblast/defaults-rs/tree/master/examples)
+For examples, check out: [examples/](https://github.com/cutlerHQ/defaults-rs/tree/master/examples)
 
 ## Why defaults-rs
 

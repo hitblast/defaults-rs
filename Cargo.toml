@@ -4,9 +4,9 @@ version = "0.5.1"
 edition = "2024"
 authors = ["Anindya Shiddhartha <hitblastlive@gmail.com>"]
 description = "Open-source interface to a user's defaults on macOS"
-documentation = "https://hitblast.github.io/defaults-rs"
+documentation = "https://cutlerhq.github.io/defaults-rs"
 license = "MIT"
-repository = "https://github.com/hitblast/defaults-rs"
+repository = "https://github.com/cutlerHQ/defaults-rs"
 keywords = ["macos", "defaults", "cli", "preferences", "plist"]
 categories = ["command-line-utilities", "api-bindings"]
 
