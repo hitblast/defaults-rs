@@ -188,8 +188,12 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
                 }
                 "delete" => {
                     let key = sub_m.get_one::<String>("key").map(String::as_str);
-                    print_result(Preferences::delete(domain, key));
-                    Ok(())
+
+                    if let Some(key) = key {
+                        Preferences::delete(domain, key)
+                    } else {
+                        Preferences::delete_domain(domain)
+                    }
                 }
                 "rename" => {
                     let old_key = get_required_arg(sub_m, "old_key");

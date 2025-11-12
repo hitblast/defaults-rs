@@ -130,17 +130,15 @@ impl Preferences {
     }
 
     /// Delete a key from the given domain.
-    ///
-    /// If `key` is `None`, deletes the entire domain file.
-    /// If `key` is provided, removes the key from the domain plist.
-    pub fn delete(domain: Domain, key: Option<&str>) -> Result<()> {
+    pub fn delete(domain: Domain, key: &str) -> Result<()> {
         let cf_name = &domain.get_cf_name();
+        foundation::delete_key(cf_name, key)
+    }
 
-        if let Some(key) = key {
-            foundation::delete_key(cf_name, key)
-        } else {
-            foundation::delete_domain(cf_name)
-        }
+    /// Delete a whole domain.
+    pub fn delete_domain(domain: Domain) -> Result<()> {
+        let cf_name = &domain.get_cf_name();
+        foundation::delete_domain(cf_name)
     }
 
     /// Read the type of a value at the given key in the specified domain.
@@ -278,14 +276,11 @@ impl Preferences {
     /// Batch-delete multiple keys for domains concurrently.
     ///
     /// # Concurrency & Grouping
-    /// - The input is a vector of tuples `(Domain, Option<String>)`.
+    /// - The input is a vector of tuples `(Domain, String)`.
     /// - Requests are grouped by domain.
-    /// - For each domain, all requested deletions are performed in a single I/O operation.
-    /// - All domains are processed concurrently using `futures::future::join_all`.
     ///
     /// # Behavior
-    /// - If any request for a domain has a key of `None`, the entire domain file is deleted.
-    /// - Otherwise, only the specified keys are removed from the domain.
+    /// - Only the specified keys are removed from the domain.
     ///
     /// # Errors
     /// - If any deletion fails (e.g., key not found), the operation returns an error.
