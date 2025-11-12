@@ -2,7 +2,7 @@
 
 # 🍎 defaults-rs
 
-#### Rust-based interface to a user's defaults on macOS
+#### Open-source interface to a user's defaults on macOS
 
 ![Crates.io Total Downloads](https://img.shields.io/crates/d/defaults-rs)
 [![Refactor CI](https://github.com/hitblast/defaults-rs/actions/workflows/refactor.yml/badge.svg)](https://github.com/hitblast/defaults-rs/actions/workflows/refactor.yml)
@@ -14,11 +14,8 @@
 - Read, write, delete, rename, import/export, and inspect preferences.
 - Supports user/global/path domains.
 - Supports *all* plist value types (API).
-- Pretty-printing and better logging than the original.
+- Pretty-printing and better logging than the original `defaults` tool.
 - Dynamically chooses between XML and binary PLIST data formats.
-
-> [!WARNING]
-> Some specs might not be applicable (e.g. adding to dict) currently for the CLI side, so the API side is exposed fully for proper extensibility.
 
 ## Table of Contents
 

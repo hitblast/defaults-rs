@@ -161,7 +161,7 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
                 "read-type" => {
                     let key = get_required_arg(sub_m, "key");
                     let val = Preferences::read(domain, key)?;
-                    println!("{}", val.get_type());
+                    println!("Type is {}", val.get_type());
                     Ok(())
                 }
                 "write" => {
@@ -177,8 +177,6 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
                     } else if let Some(val) = sub_m.get_one::<String>("string") {
                         ("string", val)
                     } else {
-                        use anyhow::bail;
-
                         bail!(
                             "You must specify one of --int, --float, --bool, or --string for the value type."
                         )
