@@ -1,0 +1,5 @@
+[hook.pre-push]
+run = """
+cargo clippy --all-targets --no-deps --quiet
+cargo fmt --all
+"""

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 #[cfg(feature = "cli")]
+use anyhow::{anyhow, bail};
+#[cfg(feature = "cli")]
 use clap::ArgMatches;
 #[cfg(feature = "cli")]
 use defaults_rs::{
@@ -8,50 +10,70 @@ use defaults_rs::{
     cli::{get_required_arg, print_result},
 };
 #[cfg(feature = "cli")]
-use std::path::PathBuf;
-#[cfg(feature = "cli")]
-use tokio::fs;
-
+use std::path::Path;
 #[cfg(feature = "cli")]
 mod prettifier;
+#[cfg(feature = "cli")]
+use anyhow::Result;
 #[cfg(feature = "cli")]
 use prettifier::apple_style_string;
 
 /// main runner func
-#[tokio::main]
 #[cfg(feature = "cli")]
-async fn main() {
+fn main() {
     let matches = build_cli().get_matches();
 
-    match matches.subcommand() {
-        Some((cmd, sub_m)) => handle_subcommand(cmd, sub_m).await,
+    let result = match matches.subcommand() {
+        Some((cmd, sub_m)) => match handle_subcommand(cmd, sub_m) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(e),
+        },
         None => unreachable!("Subcommand required"),
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
     }
 }
 
 /// Returns a domain object based on the kind of the argument that is passed.
 #[cfg(feature = "cli")]
-async fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
-    let domain = sub_m.get_one::<String>("domain").expect("domain required");
-    let path = PathBuf::from(domain);
+fn parse_domain_or_path(sub_m: &ArgMatches) -> Result<Domain> {
+    use defaults_rs::Domain;
 
-    // Try as-is
-    if fs::try_exists(&path).await.unwrap() {
-        return Domain::Path(path);
+    let home_dir = dirs::home_dir().ok_or_else(|| anyhow!("could not resolve home directory"))?;
+
+    let mut domain = sub_m
+        .get_one::<String>("domain")
+        .expect("domain argument is required")
+        .to_string();
+
+    // filepath check
+    if let Ok(path) = Path::new(domain.as_str()).canonicalize()
+        && path.is_file()
+        && (path.starts_with(format!(
+            "{}/Library/Preferences/",
+            home_dir.to_string_lossy()
+        )) || path.starts_with("/Library/Preferences/")
+            || path.starts_with("/System/Library/Preferences/")
+            || path
+                == Path::new(&format!(
+                    "{}/Library/Preferences/.GlobalPreferences.plist",
+                    home_dir.to_string_lossy()
+                ))
+            || path == Path::new("/Library/Preferences/.GlobalPreferences.plist"))
+    {
+        domain = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow!("could not get file stem"))?
+            .to_string();
     }
 
-    // Try with .plist extension if not already present
-    if path.extension().and_then(|e| e.to_str()) != Some("plist") {
-        let mut with_ext = path.clone();
-        with_ext.set_extension("plist");
-        if with_ext.exists() {
-            return Domain::Path(with_ext);
-        }
-    }
-
-    // Fallback to domain logic
+    // domain check
     match domain.as_str() {
-        "-g" | "NSGlobalDomain" | "-globalDomain" => Domain::Global,
+        "-g" | "NSGlobalDomain" | "-globalDomain" => Ok(Domain::Global),
         other => {
             if other.contains("..")
                 || other.contains('/')
@@ -60,92 +82,87 @@ async fn parse_domain_or_path(sub_m: &ArgMatches) -> Domain {
                     .chars()
                     .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
             {
-                eprintln!("Error: invalid domain or plist path: {other}");
-                std::process::exit(1);
+                bail!("invalid domain or plist path: {other}");
+            } else if !Preferences::list_domains()?
+                .iter()
+                .any(|dom| dom.to_string() == other)
+            {
+                bail!("domain '{domain}' does not exist!")
             }
-            Domain::User(other.to_string())
+            Ok(Domain::User(other.to_string()))
         }
     }
 }
 
 /// Returns a string representation of a preference value based on the typeflag passed.s
 #[cfg(feature = "cli")]
-fn from_typeflag_str(type_flag: &str, s: &str) -> Result<PrefValue, String> {
+fn from_typeflag_str(type_flag: &str, s: &str) -> Result<PrefValue> {
     match type_flag {
-        "int" => s
-            .parse::<i64>()
-            .map(PrefValue::Integer)
-            .map_err(|_| "Invalid integer value".into()),
-        "float" => s
-            .parse::<f64>()
-            .map(PrefValue::Float)
-            .map_err(|_| "Invalid float value".into()),
+        "int" => {
+            let val = s
+                .parse::<i64>()
+                .map_err(|e| anyhow!("Failed to parse int: {e}"))?;
+            Ok(PrefValue::Integer(val))
+        }
+        "float" => {
+            let val = s
+                .parse::<f64>()
+                .map_err(|e| anyhow!("Failed to parse float: {e}"))?;
+            Ok(PrefValue::Float(val))
+        }
         "bool" => match s {
             "true" | "1" => Ok(PrefValue::Boolean(true)),
             "false" | "0" => Ok(PrefValue::Boolean(false)),
-            _ => Err("Invalid boolean value (use true/false or 1/0)".into()),
+            _ => bail!("Invalid boolean value (use true/false or 1/0)"),
         },
         "string" => Ok(PrefValue::String(s.to_string())),
-        other => Err(format!("Unsupported type: {other}")),
+        other => bail!("Unsupported type: {other}"),
     }
 }
 
 /// Function to handle subcommand runs.
 #[cfg(feature = "cli")]
-async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
+fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
     match cmd {
-        "domains" => match Preferences::list_domains().await {
-            Ok(domains) => {
-                for dom in domains {
-                    println!("{dom}");
-                }
+        "domains" => {
+            let domains = Preferences::list_domains()?;
+            for dom in domains {
+                println!("{dom}");
             }
-            Err(e) => eprintln!("Error: {e}"),
-        },
+            Ok(())
+        }
         "find" => {
             let word = get_required_arg(sub_m, "word");
-            match Preferences::find(word).await {
-                Ok(results) => {
-                    for (domain, matches) in results {
-                        println!("Found {} matches for domain `{}`:", matches.len(), domain);
-                        for m in matches {
-                            println!("    {} = {}", m.key_path, m.value);
-                        }
-                        println!();
-                    }
+            let results = Preferences::find(word)?;
+            for (domain, matches) in results {
+                println!("Found {} matches for domain `{}`:", matches.len(), domain);
+                for m in matches {
+                    println!("    {} = {}", m.key, m.value);
                 }
-                Err(e) => eprintln!("Error: {e}"),
+                println!();
             }
+            Ok(())
         }
         _ => {
-            let domain: Domain = parse_domain_or_path(sub_m).await;
-
-            if let Domain::User(ref domain) = domain {
-                let domains = Preferences::list_domains().await.unwrap_or_default();
-                if !domains.contains(&Domain::User(domain.clone())) {
-                    use std::process::exit;
-
-                    eprintln!("Error: Domain {domain} does not exist!");
-                    exit(1);
-                }
-            }
+            let domain: Domain = parse_domain_or_path(sub_m)?;
 
             match cmd {
                 "read" => {
-                    let key = sub_m.get_one::<String>("key").map(String::as_str);
-                    match Preferences::read(domain, key).await {
-                        Ok(val) => {
-                            println!("{}", apple_style_string(&val, 0))
-                        }
-                        Err(e) => eprintln!("Error: {e}"),
-                    }
+                    let val = if let Some(key) = sub_m.get_one::<String>("key").map(String::as_str)
+                    {
+                        Preferences::read(domain, key)?
+                    } else {
+                        Preferences::read_domain(domain)?
+                    };
+
+                    println!("{}", apple_style_string(&val, 0));
+                    Ok(())
                 }
                 "read-type" => {
                     let key = get_required_arg(sub_m, "key");
-                    match Preferences::read(domain, Some(key)).await {
-                        Ok(val) => println!("{}", val.get_type()),
-                        Err(e) => eprintln!("Error: {e}"),
-                    }
+                    let val = Preferences::read(domain, key)?;
+                    println!("{}", val.get_type());
+                    Ok(())
                 }
                 "write" => {
                     let key = get_required_arg(sub_m, "key");
@@ -160,35 +177,37 @@ async fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) {
                     } else if let Some(val) = sub_m.get_one::<String>("string") {
                         ("string", val)
                     } else {
-                        eprintln!(
-                            "Error: You must specify one of --int, --float, --bool, or --string for the value type."
-                        );
-                        std::process::exit(1);
+                        use anyhow::bail;
+
+                        bail!(
+                            "You must specify one of --int, --float, --bool, or --string for the value type."
+                        )
                     };
 
-                    let value = from_typeflag_str(type_flag, value_str).unwrap_or_else(|e| {
-                        eprintln!("{e}");
-                        std::process::exit(1)
-                    });
-
-                    print_result(Preferences::write(domain, key, value).await);
+                    let value = from_typeflag_str(type_flag, value_str)?;
+                    print_result(Preferences::write(domain, key, value));
+                    Ok(())
                 }
                 "delete" => {
                     let key = sub_m.get_one::<String>("key").map(String::as_str);
-                    print_result(Preferences::delete(domain, key).await);
+                    print_result(Preferences::delete(domain, key));
+                    Ok(())
                 }
                 "rename" => {
                     let old_key = get_required_arg(sub_m, "old_key");
                     let new_key = get_required_arg(sub_m, "new_key");
-                    print_result(Preferences::rename(domain, old_key, new_key).await);
+                    print_result(Preferences::rename(domain, old_key, new_key));
+                    Ok(())
                 }
                 "import" => {
                     let path = get_required_arg(sub_m, "path");
-                    print_result(Preferences::import(domain, path).await);
+                    print_result(Preferences::import(domain, path));
+                    Ok(())
                 }
                 "export" => {
                     let path = get_required_arg(sub_m, "path");
-                    print_result(Preferences::export(domain, path).await);
+                    print_result(Preferences::export(domain, path));
+                    Ok(())
                 }
                 _ => unreachable!(),
             }

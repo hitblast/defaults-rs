@@ -3,12 +3,11 @@
 //! Library API for defaults-rs: macOS preferences management in Rust.
 
 mod core;
-
-pub use core::error::PrefError;
-pub use core::types::{Domain, PrefValue};
+pub use core::types::PrefValue;
 
 mod preferences;
 pub use preferences::Preferences;
+pub use preferences::types::{Domain, FindMatch};
 
 #[cfg(feature = "cli")]
 pub mod cli;
