@@ -1,5 +1,3 @@
-<img src="assets/logo.png" width="170px" align="right">
-
 # 🍎 defaults-rs
 
 #### Open-source interface to a user's defaults on macOS
