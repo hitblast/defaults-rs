@@ -13,6 +13,8 @@ use clap::{Arg, Command};
 
 #[cfg(feature = "cli")]
 pub fn build_cli() -> Command {
+    use clap::ArgAction;
+
     Command::new("defaults-rs")
         .about("Manage your macOS preference & PLIST files.")
         .version(env!("CARGO_PKG_VERSION"))
@@ -107,7 +109,17 @@ pub fn build_cli() -> Command {
                 .arg(domain_arg())
                 .arg(path_arg()),
         )
-        .subcommand(Command::new("domains").about("List all available preference domains"))
+        .subcommand(
+            Command::new("domains")
+                .about("List all available preference domains")
+                .arg(
+                    Arg::new("no-fuzzy")
+                        .short('n')
+                        .long("no-fuzzy")
+                        .help("Directly print all domains instead of fuzzy-searching.")
+                        .action(ArgAction::SetTrue),
+                ),
+        )
         .subcommand(
             Command::new("find")
                 .about("List all entries in all domains containing word")

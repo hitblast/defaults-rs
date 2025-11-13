@@ -1,6 +1,6 @@
 [package]
 name = "defaults-rs"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2024"
 authors = ["Anindya Shiddhartha <hitblastlive@gmail.com>"]
 description = "Open-source interface to a user's defaults on macOS"
@@ -23,10 +23,14 @@ dirs = "6.0.0"
 
 [features]
 default = ["cli"]
-cli = ["clap"]
+cli = ["clap", "skim"]
 
 [dependencies.clap]
 version = "4.5"
+optional = true
+
+[dependencies.skim]
+version = "0.20.5"
 optional = true
 
 [workspace]
