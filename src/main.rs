@@ -1,22 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-#[cfg(feature = "cli")]
 use anyhow::{anyhow, bail};
-#[cfg(feature = "cli")]
 use clap::ArgMatches;
-#[cfg(feature = "cli")]
 use defaults_rs::{
     Domain, PrefValue, Preferences, build_cli,
     cli::{get_required_arg, print_result},
 };
-#[cfg(feature = "cli")]
 use std::path::Path;
-#[cfg(feature = "cli")]
 mod prettifier;
-#[cfg(feature = "cli")]
 use anyhow::Result;
-#[cfg(feature = "cli")]
 use prettifier::apple_style_string;
+use skim::prelude::*;
+use std::io::Cursor;
 
 /// main runner func
 #[cfg(feature = "cli")]
@@ -126,9 +121,41 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
     match cmd {
         "domains" => {
             let domains = Preferences::list_domains()?;
-            for dom in domains {
-                println!("{dom}");
+            let domains_str: Vec<String> = domains.iter().map(|f| f.to_string()).collect();
+
+            if !sub_m.get_flag("no-fuzzy") {
+                let item_reader = SkimItemReader::default();
+                let skim_items = item_reader.of_bufread(Cursor::new(domains_str.join("\n")));
+
+                let options = SkimOptionsBuilder::default()
+                    .prompt(
+                        "Select a domain to read it. Use arrow keys for navigation: ".to_string(),
+                    )
+                    .case(CaseMatching::Smart)
+                    .multi(false) // one domain only
+                    .build()
+                    .unwrap();
+
+                let selected_items = Skim::run_with(&options, Some(skim_items))
+                    .map(|out| out.selected_items)
+                    .unwrap_or_else(|| Vec::new());
+
+                if let Some(item) = selected_items.first() {
+                    let domain = domains
+                        .iter()
+                        .find(|&d| d.to_string() == item.output())
+                        .unwrap()
+                        .clone();
+
+                    let val = Preferences::read_domain(domain)?;
+                    println!("{}", apple_style_string(&val, 0));
+                }
+            } else {
+                for dom in domains {
+                    println!("{dom}");
+                }
             }
+
             Ok(())
         }
         "find" => {

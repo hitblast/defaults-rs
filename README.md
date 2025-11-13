@@ -86,10 +86,13 @@ $ drs read ~/Library/Preferences/com.apple.dock.plist
 $ drs find <word>
 ```
 
-#### View all domains
+#### View / fuzzy-read domains
 
 ```sh
 $ drs domains
+
+# disable fuzzy-searching with the -n/--no-fuzzy flag
+$ drs domains -n
 ```
 
 #### Use the global domain
@@ -135,9 +138,9 @@ For examples, check out: [examples/](https://github.com/machlit/defaults-rs/tree
 
 *literally a personal take section, but here you go if you wanna listen to some yapping:*
 
-I have made defaults-rs because I needed a handy wrapper for interacting with the preferences system the CoreFoundation framework builds up on macOS. Currently, defaults-rs serves as the [backend for cutler](https://cutlercli.github.io) when it comes to backing up and restoring system preferences.
-
-I also found making this tool as a great way to experiment with CoreFoundation bindings and learn more about Objective-C concepts in general.
+defaults-rs was initially made with the necessity of a thin wrapper around the CoreFoundation APIs which are
+responsible for storing a user's defaults. Now, it also serves as a backend for directly interfering with
+system preferences in the [cutler](https://github.com/machlit/cutler) project.
 
 ## Contributing
 
