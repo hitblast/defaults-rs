@@ -138,7 +138,7 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
 
                 let selected_items = Skim::run_with(&options, Some(skim_items))
                     .map(|out| out.selected_items)
-                    .unwrap_or_else(|| Vec::new());
+                    .unwrap_or_default();
 
                 if let Some(item) = selected_items.first() {
                     let domain = domains
