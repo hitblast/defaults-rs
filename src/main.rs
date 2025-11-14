@@ -150,11 +150,14 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
                     .build()
                     .unwrap();
 
-                let selected_items = Skim::run_with(&options, Some(skim_items))
-                    .map(|out| out.selected_items)
-                    .unwrap_or_default();
+                let out = Skim::run_with(&options, Some(skim_items));
 
-                if let Some(item) = selected_items.first() {
+                let out = match out {
+                    Some(o) if !o.is_abort => o,
+                    _ => return Ok(()),
+                };
+
+                if let Some(item) = out.selected_items.first() {
                     let domain = domains
                         .iter()
                         .find(|&d| d.to_string() == item.output())
