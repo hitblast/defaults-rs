@@ -1,6 +1,6 @@
 [package]
 name = "defaults-rs"
-version = "0.6.4"
+version = "0.6.5"
 edition = "2024"
 authors = ["Anindya Shiddhartha <hitblastlive@gmail.com>"]
 description = "Open-source interface to a user's defaults on macOS"
