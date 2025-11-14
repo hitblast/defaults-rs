@@ -14,7 +14,7 @@
 - Supports *all* plist value types (API).
 - Pretty-printing and better logging than the original `defaults` tool.
 - Dynamically chooses between XML and binary PLIST data formats.
-- Extremely small (<1.5k LOC).
+- Extremely small (<1.5k SLoC).
 
 ## Table of Contents
 
