@@ -38,6 +38,13 @@ pub fn build_cli() -> Command {
                 .arg(domain_arg())
                 .arg(key_arg(true))
                 .arg(
+                    Arg::new("force")
+                        .help("Disables checking for existing domain")
+                        .short('F')
+                        .long("force")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
                     Arg::new("int")
                         .help("Write an integer value")
                         .short('i')

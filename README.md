@@ -64,6 +64,9 @@ $ drs read com.apple.dock.plist tilesize   # if file exists, treated as path; el
 $ drs write com.apple.dock tilesize -i 48
 $ drs write com.apple.dock tilesize --int 48
 $ drs write ~/Library/Preferences/com.apple.dock.plist tilesize --int 48
+
+# create a new domain (disables checks)
+$ drs write rubberduck --force duckcount --int 5
 ```
 
 #### Delete a key

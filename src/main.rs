@@ -28,14 +28,14 @@ fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("Error: {e}");
+        eprintln!("\nError: {e}");
         std::process::exit(1);
     }
 }
 
 /// Returns a domain object based on the kind of the argument that is passed.
 #[cfg(feature = "cli")]
-fn parse_domain_or_path(sub_m: &ArgMatches) -> Result<Domain> {
+fn parse_domain_or_path(sub_m: &ArgMatches, force: bool) -> Result<Domain> {
     use defaults_rs::Domain;
 
     let home_dir = dirs::home_dir().ok_or_else(|| anyhow!("could not resolve home directory"))?;
@@ -79,11 +79,12 @@ fn parse_domain_or_path(sub_m: &ArgMatches) -> Result<Domain> {
                     .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
             {
                 bail!("invalid domain or plist path: {other}");
-            } else if !Preferences::list_domains()?
-                .iter()
-                .any(|dom| dom.to_string() == other)
+            } else if !force
+                && !Preferences::list_domains()?
+                    .iter()
+                    .any(|dom| dom.to_string() == other)
             {
-                bail!("domain '{domain}' does not exist!")
+                bail!("Domain '{domain}' not found!.")
             }
             Ok(Domain::User(other.to_string()))
         }
@@ -171,8 +172,38 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
             }
             Ok(())
         }
+        "write" => {
+            let force = sub_m.get_flag("force");
+
+            let domain: Domain = if let Ok(val) = parse_domain_or_path(sub_m, force) {
+                val
+            } else {
+                bail!("Could not write to non-existing domain. If intentional, use -F/--force.")
+            };
+
+            let key = get_required_arg(sub_m, "key");
+
+            // Detect which type flag was used and get the value.
+            let (type_flag, value_str) = if let Some(val) = sub_m.get_one::<String>("int") {
+                ("int", val)
+            } else if let Some(val) = sub_m.get_one::<String>("float") {
+                ("float", val)
+            } else if let Some(val) = sub_m.get_one::<String>("bool") {
+                ("bool", val)
+            } else if let Some(val) = sub_m.get_one::<String>("string") {
+                ("string", val)
+            } else {
+                bail!(
+                    "You must specify one of --int, --float, --bool, or --string for the value type."
+                )
+            };
+
+            let value = from_typeflag_str(type_flag, value_str)?;
+            print_result(Preferences::write(domain, key, value));
+            Ok(())
+        }
         _ => {
-            let domain: Domain = parse_domain_or_path(sub_m)?;
+            let domain: Domain = parse_domain_or_path(sub_m, false)?;
 
             match cmd {
                 "read" => {
@@ -190,28 +221,6 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
                     let key = get_required_arg(sub_m, "key");
                     let val = Preferences::read(domain, key)?;
                     println!("Type is {}", val.get_type());
-                    Ok(())
-                }
-                "write" => {
-                    let key = get_required_arg(sub_m, "key");
-
-                    // Detect which type flag was used and get the value.
-                    let (type_flag, value_str) = if let Some(val) = sub_m.get_one::<String>("int") {
-                        ("int", val)
-                    } else if let Some(val) = sub_m.get_one::<String>("float") {
-                        ("float", val)
-                    } else if let Some(val) = sub_m.get_one::<String>("bool") {
-                        ("bool", val)
-                    } else if let Some(val) = sub_m.get_one::<String>("string") {
-                        ("string", val)
-                    } else {
-                        bail!(
-                            "You must specify one of --int, --float, --bool, or --string for the value type."
-                        )
-                    };
-
-                    let value = from_typeflag_str(type_flag, value_str)?;
-                    print_result(Preferences::write(domain, key, value));
                     Ok(())
                 }
                 "delete" => {
