@@ -57,7 +57,7 @@ The CLI command is `drs`. It closely mimics the original `defaults` tool.
 ```sh
 $ drs read com.apple.dock tilesize
 $ drs read ~/Library/Preferences/com.apple.dock.plist tilesize
-$ drs read com.apple.dock.plist tilesize   # if file exists, treated as path; else as domain
+$ drs read com.apple.dock.plist tilesize   # this also works!
 ```
 
 #### Write a key
