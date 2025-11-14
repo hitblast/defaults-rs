@@ -108,8 +108,8 @@ fn from_typeflag_str(type_flag: &str, s: &str) -> Result<PrefValue> {
             Ok(PrefValue::Float(val))
         }
         "bool" => match s {
-            "true" | "1" => Ok(PrefValue::Boolean(true)),
-            "false" | "0" => Ok(PrefValue::Boolean(false)),
+            "true" | "1" | "yes" => Ok(PrefValue::Boolean(true)),
+            "false" | "0" | "no" => Ok(PrefValue::Boolean(false)),
             _ => bail!("Invalid boolean value (use true/false or 1/0)"),
         },
         "string" => Ok(PrefValue::String(s.to_string())),

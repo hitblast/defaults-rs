@@ -23,6 +23,7 @@
 - [Usage](#usage)
 - [Rust API Usage](#rust-api-usage)
 - [Why defaults-rs](#why-defaults-rs)
+- [Caveats](#caveats)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -143,6 +144,12 @@ For examples, check out: [examples/](https://github.com/machlit/defaults-rs/tree
 defaults-rs was initially made with the necessity of a thin wrapper around the CoreFoundation APIs which are
 responsible for storing a user's defaults. Now, it also serves as a backend for directly interfering with
 system preferences in the [cutler](https://github.com/machlit/cutler) project.
+
+## Caveats
+
+Since this is a completely open-source attempt to replicate the capabilities of `defaults` (which is a proprietary software), there will be certain limitations:
+
+- Domain-reading might result in showing slightly "less" output in very rare cases where parts of the domain is overridden by the system (e.g. `com.apple.Safari`). defaults-rs attempts to read in the `Current User` + `Any Host` space for the maximum achievable domain index. This is not a threat to I/O operations so it's not really much of a caveat.
 
 ## Contributing
 

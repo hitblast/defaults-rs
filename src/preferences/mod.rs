@@ -115,7 +115,25 @@ impl Preferences {
     /// Read an entire domain.
     pub fn read_domain(domain: Domain) -> Result<PrefValue> {
         let cf_name = &domain.get_cf_name();
-        foundation::read_pref_domain(cf_name)
+        let mut result = match foundation::read_pref_domain(cf_name)? {
+            PrefValue::Dictionary(inner) => inner,
+            _ => unreachable!(),
+        };
+
+        let matching_domains: Vec<Domain> = Preferences::list_domains()?
+            .into_iter()
+            .filter(|d| d.to_string().starts_with(&format!("{}.", domain)))
+            .collect();
+
+        for m_domain in matching_domains {
+            let m_result = match foundation::read_pref_domain(&m_domain.get_cf_name())? {
+                PrefValue::Dictionary(inner) => inner,
+                _ => unreachable!(),
+            };
+            result.extend(m_result);
+        }
+
+        Ok(PrefValue::Dictionary(result))
     }
 
     /// Write a value to the given domain and key.
