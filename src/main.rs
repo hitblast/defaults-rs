@@ -1,17 +1,26 @@
 // SPDX-License-Identifier: MIT
 
+#[cfg(feature = "cli")]
 mod prettifier;
+#[cfg(feature = "cli")]
 use prettifier::prettify;
 
+#[cfg(feature = "cli")]
 use anyhow::Result;
+#[cfg(feature = "cli")]
 use anyhow::{anyhow, bail};
+#[cfg(feature = "cli")]
 use clap::ArgMatches;
+#[cfg(feature = "cli")]
 use defaults_rs::{
     Domain, PrefValue, Preferences, build_cli,
     cli::{get_required_arg, print_result},
 };
+#[cfg(feature = "cli")]
 use skim::prelude::*;
+#[cfg(feature = "cli")]
 use std::io::Cursor;
+#[cfg(feature = "cli")]
 use std::path::Path;
 
 /// main runner func
