@@ -47,6 +47,18 @@ pub(crate) fn prettify(val: &PrefValue, indent: usize) -> String {
                 "0".to_string()
             }
         }
+        PrefValue::Data(data) => {
+            let mut s = data
+                .iter()
+                .map(|b| format!("0x{:02X}", b))
+                .collect::<Vec<_>>();
+            s.truncate(5);
+
+            format!("<length = {}, bytes = [{}...]>", data.len(), s.join(", "))
+        }
+        PrefValue::Url(url) => format!("<URL: {}>", url),
+        PrefValue::Uuid(uuid) => format!("<UUID: {}>", uuid),
+        PrefValue::Uid(uid) => format!("<UID: {}>", uid),
         _ => val.to_string(),
     }
 }

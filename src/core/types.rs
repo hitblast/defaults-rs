@@ -35,6 +35,9 @@ impl std::fmt::Display for PrefValue {
             PrefValue::Integer(i) => write!(f, "{}", i),
             PrefValue::Float(fl) => write!(f, "{}", fl),
             PrefValue::String(s) => write!(f, "{}", s),
+            PrefValue::Url(url) => write!(f, "{}", url),
+            PrefValue::Uuid(uuid) => write!(f, "{}", uuid),
+            PrefValue::Uid(uid) => write!(f, "{}", uid),
             PrefValue::Array(arr) => {
                 write!(
                     f,
@@ -56,10 +59,11 @@ impl std::fmt::Display for PrefValue {
                 )
             }
             PrefValue::Data(data) => {
-                write!(f, "<Data: length {} bytes>", data.len())
+                let data: Vec<String> = data.iter().map(|f| f.to_string()).collect();
+                write!(f, "[{}]", data.join(", "))
             }
             PrefValue::Date(apple_ts) => {
-                write!(f, "<Date: {}>", {
+                write!(f, "{}", {
                     use chrono::{TimeZone, Utc};
 
                     let base = Utc.with_ymd_and_hms(2001, 1, 1, 0, 0, 0).unwrap();
@@ -69,15 +73,6 @@ impl std::fmt::Display for PrefValue {
                     base + chrono::Duration::seconds(secs)
                         + chrono::Duration::nanoseconds(nanos as i64)
                 })
-            }
-            PrefValue::Url(url) => {
-                write!(f, "<Url: {}>", url)
-            }
-            PrefValue::Uuid(uuid) => {
-                write!(f, "<Uuid: {}>", uuid)
-            }
-            PrefValue::Uid(uid) => {
-                write!(f, "<Uid: {}>", uid)
             }
         }
     }

@@ -13,6 +13,7 @@
 - Supports user/global/path domains.
 - Supports *all* plist value types (API).
 - Pretty-printing and better logging than the original `defaults` tool.
+- **Execution safety.** Never accidentally write to a faulty domain again.
 - Dynamically chooses between XML and binary PLIST data formats.
 - Extremely small (<1.5k SLoC).
 
@@ -138,8 +139,6 @@ Please refer to the [API reference](https://machlit.github.io/defaults-rs) for m
 For examples, check out: [examples/](https://github.com/machlit/defaults-rs/tree/master/examples)
 
 ## Why defaults-rs
-
-*literally a personal take section, but here you go if you wanna listen to some yapping:*
 
 defaults-rs was initially made with the necessity of a thin wrapper around the CoreFoundation APIs which are
 responsible for storing a user's defaults. Now, it also serves as a backend for directly interfering with

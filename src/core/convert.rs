@@ -148,7 +148,7 @@ pub(crate) unsafe fn cf_to_pref(r: CFTypeRef) -> PrefValue {
         let len = unsafe { CFDataGetLength(r as _) };
         let ptr = unsafe { CFDataGetBytePtr(r as _) };
         let data = unsafe { std::slice::from_raw_parts(ptr, len as usize).to_vec() };
-        PrefValue::Data(data)
+        PrefValue::Data(data.into())
     } else if tid == date_tid {
         let abs_time = unsafe { CFDateGetAbsoluteTime(r as _) };
         PrefValue::Date(abs_time)
