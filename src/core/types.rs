@@ -66,11 +66,8 @@ impl std::fmt::Display for PrefValue {
                     let secs = *apple_ts as i64;
                     let nanos = ((apple_ts % 1.0) * 1e9) as u32;
 
-                    let dt = base
-                        + chrono::Duration::seconds(secs)
-                        + chrono::Duration::nanoseconds(nanos as i64);
-
-                    dt
+                    base + chrono::Duration::seconds(secs)
+                        + chrono::Duration::nanoseconds(nanos as i64)
                 })
             }
             PrefValue::Url(url) => {
