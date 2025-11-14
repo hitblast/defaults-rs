@@ -68,7 +68,7 @@ fn parse_domain_or_path(sub_m: &ArgMatches, force: bool) -> Result<Domain> {
     }
 
     // domain check
-    match domain.as_str() {
+    match domain.strip_suffix(".plist").unwrap_or(&domain) {
         "-g" | "NSGlobalDomain" | "-globalDomain" => Ok(Domain::Global),
         other => {
             if other.contains("..")
@@ -78,14 +78,17 @@ fn parse_domain_or_path(sub_m: &ArgMatches, force: bool) -> Result<Domain> {
                     .chars()
                     .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
             {
-                bail!("invalid domain or plist path: {other}");
-            } else if !force
+                bail!("Invalid domain or plist path: {other}");
+            }
+
+            if !force
                 && !Preferences::list_domains()?
                     .iter()
                     .any(|dom| dom.to_string() == other)
             {
                 bail!("Domain '{domain}' not found!.")
             }
+
             Ok(Domain::User(other.to_string()))
         }
     }
