@@ -343,6 +343,7 @@ name = "defaults-rs"
 version = "0.6.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "core-foundation",
  "core-foundation-sys",

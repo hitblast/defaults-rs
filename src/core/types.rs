@@ -58,8 +58,20 @@ impl std::fmt::Display for PrefValue {
             PrefValue::Data(data) => {
                 write!(f, "<Data: length {} bytes>", data.len())
             }
-            PrefValue::Date(dt) => {
-                write!(f, "<Date: {}>", dt)
+            PrefValue::Date(apple_ts) => {
+                write!(f, "<Date: {}>", {
+                    use chrono::{TimeZone, Utc};
+
+                    let base = Utc.with_ymd_and_hms(2001, 1, 1, 0, 0, 0).unwrap();
+                    let secs = *apple_ts as i64;
+                    let nanos = ((apple_ts % 1.0) * 1e9) as u32;
+
+                    let dt = base
+                        + chrono::Duration::seconds(secs)
+                        + chrono::Duration::nanoseconds(nanos as i64);
+
+                    dt
+                })
             }
             PrefValue::Url(url) => {
                 write!(f, "<Url: {}>", url)

@@ -2,8 +2,11 @@
 
 use crate::PrefValue;
 
-/// Prettify a `PlistValue` in Apple-style format (for CLI).
-pub(crate) fn apple_style_string(val: &PrefValue, indent: usize) -> String {
+/// Prettify a `PlistValue` for display.
+///
+/// This essentially takes all complex types such as PrefValue::Dictionary or PrefValue::Array, and turns
+/// them into indented syntactic sugar output for the terminal.
+pub(crate) fn prettify(val: &PrefValue, indent: usize) -> String {
     let ind = |n| "    ".repeat(n);
     match val {
         PrefValue::Dictionary(dict) => {
@@ -15,7 +18,7 @@ pub(crate) fn apple_style_string(val: &PrefValue, indent: usize) -> String {
                     "{}{} = {}",
                     ind(indent + 1),
                     quote_key(k),
-                    apple_style_string(v, indent + 1)
+                    prettify(v, indent + 1)
                 ));
                 out.push(';');
                 out.push('\n');
@@ -29,7 +32,7 @@ pub(crate) fn apple_style_string(val: &PrefValue, indent: usize) -> String {
             let iter = arr.iter().peekable();
             for v in iter {
                 out.push_str(&ind(indent + 1));
-                out.push_str(&apple_style_string(v, indent + 1));
+                out.push_str(&prettify(v, indent + 1));
                 out.push(',');
                 out.push('\n');
             }
@@ -37,8 +40,6 @@ pub(crate) fn apple_style_string(val: &PrefValue, indent: usize) -> String {
             out
         }
         PrefValue::String(s) => quote_string(s),
-        PrefValue::Integer(i) => i.to_string(),
-        PrefValue::Float(f) => f.to_string(),
         PrefValue::Boolean(b) => {
             if *b {
                 "1".to_string()
@@ -46,11 +47,7 @@ pub(crate) fn apple_style_string(val: &PrefValue, indent: usize) -> String {
                 "0".to_string()
             }
         }
-        PrefValue::Data(data) => format!("<Data: {} bytes>", data.len()),
-        PrefValue::Date(dt) => format!("<Date: {}>", dt),
-        PrefValue::Url(url) => format!("<Url: {}>", url),
-        PrefValue::Uuid(uuid) => format!("<Uuid: {}>", uuid),
-        PrefValue::Uid(uid) => format!("<Uid: {}>", uid),
+        _ => val.to_string(),
     }
 }
 

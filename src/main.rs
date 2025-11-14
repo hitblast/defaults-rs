@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 
+mod prettifier;
+use prettifier::prettify;
+
+use anyhow::Result;
 use anyhow::{anyhow, bail};
 use clap::ArgMatches;
 use defaults_rs::{
     Domain, PrefValue, Preferences, build_cli,
     cli::{get_required_arg, print_result},
 };
-use std::path::Path;
-mod prettifier;
-use anyhow::Result;
-use prettifier::apple_style_string;
 use skim::prelude::*;
 use std::io::Cursor;
+use std::path::Path;
 
 /// main runner func
 #[cfg(feature = "cli")]
@@ -148,7 +149,7 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
                         .clone();
 
                     let val = Preferences::read_domain(domain)?;
-                    println!("{}", apple_style_string(&val, 0));
+                    println!("{}", prettify(&val, 0));
                 }
             } else {
                 for dom in domains {
@@ -182,7 +183,7 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
                         Preferences::read_domain(domain)?
                     };
 
-                    println!("{}", apple_style_string(&val, 0));
+                    println!("{}", prettify(&val, 0));
                     Ok(())
                 }
                 "read-type" => {
