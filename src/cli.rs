@@ -101,6 +101,7 @@ pub fn build_cli() -> Command {
                         .long("string")
                         .num_args(1)
                         .value_name("VALUE")
+                        .help("Write a string value")
                         .conflicts_with_all(["int", "float", "bool"]),
                 ),
         )
