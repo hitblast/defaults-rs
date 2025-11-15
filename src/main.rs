@@ -6,7 +6,7 @@ mod prettifier;
 use prettifier::prettify;
 
 #[cfg(feature = "cli")]
-use anyhow::Result;
+use anyhow::{Context, Result};
 #[cfg(feature = "cli")]
 use anyhow::{anyhow, bail};
 #[cfg(feature = "cli")]
@@ -51,7 +51,7 @@ fn parse_domain_or_path(sub_m: &ArgMatches, force: bool) -> Result<Domain> {
 
     let mut domain = sub_m
         .get_one::<String>("domain")
-        .expect("domain argument is required")
+        .context("domain argument is required")?
         .to_string();
 
     // filepath check
@@ -129,6 +129,32 @@ fn from_typeflag_str(type_flag: &str, s: &str) -> Result<PrefValue> {
     }
 }
 
+/// Fuzzy-picking helper for the CLI.
+#[cfg(feature = "cli")]
+fn pick_one(prompt: &str, items: &[String]) -> Option<String> {
+    let item_reader = SkimItemReader::default();
+    let skim_items = item_reader.of_bufread(Cursor::new(items.join("\n")));
+
+    let options = SkimOptionsBuilder::default()
+        .prompt(prompt.to_string())
+        .color(Some("bw".to_string()))
+        .case(CaseMatching::Smart)
+        .multi(false)
+        .build()
+        .expect("Failed to build options for picker.");
+
+    let out = Skim::run_with(&options, Some(skim_items));
+
+    let out = match out {
+        Some(o) if !o.is_abort => o,
+        _ => return None,
+    };
+
+    out.selected_items
+        .first()
+        .map(|item| item.output().to_string())
+}
+
 /// Function to handle subcommand runs.
 #[cfg(feature = "cli")]
 fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
@@ -137,39 +163,27 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
             let domains = Preferences::list_domains()?;
             let domains_str: Vec<String> = domains.iter().map(|f| f.to_string()).collect();
 
-            if !sub_m.get_flag("no-fuzzy") {
-                let item_reader = SkimItemReader::default();
-                let skim_items = item_reader.of_bufread(Cursor::new(domains_str.join("\n")));
-
-                let options = SkimOptionsBuilder::default()
-                    .prompt(
-                        "Select a domain to read it. Use arrow keys for navigation: ".to_string(),
-                    )
-                    .case(CaseMatching::Smart)
-                    .multi(false) // one domain only
-                    .build()
-                    .unwrap();
-
-                let out = Skim::run_with(&options, Some(skim_items));
-
-                let out = match out {
-                    Some(o) if !o.is_abort => o,
-                    _ => return Ok(()),
-                };
-
-                if let Some(item) = out.selected_items.first() {
-                    let domain = domains
-                        .iter()
-                        .find(|&d| d.to_string() == item.output())
-                        .unwrap()
-                        .clone();
-
-                    let val = Preferences::read_domain(domain)?;
-                    println!("{}", prettify(&val, 0));
-                }
-            } else {
+            if sub_m.get_flag("no-fuzzy") {
                 for dom in domains {
                     println!("{dom}");
+                }
+            } else {
+                let picker = pick_one(
+                    "Viewing list of domains. Use arrow keys to navigate: ",
+                    &domains_str,
+                );
+
+                if let Some(picked_domain) = picker {
+                    println!("Domain: {picked_domain} (is {})", {
+                        match domains
+                            .iter()
+                            .find(|d| d.to_string() == picked_domain)
+                            .context("Domain-type checker failed.")?
+                        {
+                            Domain::User(_) => "user domain",
+                            Domain::Global => "global domain",
+                        }
+                    })
                 }
             }
 
@@ -217,55 +231,83 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
             print_result(Preferences::write(domain, key, value));
             Ok(())
         }
-        _ => {
+        "read" => {
+            let input_domain = sub_m.get_one::<String>("domain");
+            let input_key = sub_m.get_one::<String>("key");
+
+            let domain: Domain = if let Ok(val) = parse_domain_or_path(sub_m, false) {
+                val
+            } else if input_domain.is_none() && input_key.is_none() {
+                let domains = Preferences::list_domains()?;
+                let domains_str: Vec<String> = domains.iter().map(|f| f.to_string()).collect();
+
+                let chosen = pick_one(
+                    "Select a proper domain to read. Use arrow keys to navigate: ",
+                    &domains_str,
+                )
+                .context("domain argument is required!")?;
+
+                domains
+                    .into_iter()
+                    .find(|d| d.to_string() == chosen)
+                    .ok_or_else(|| anyhow!("Selected domain not found in available domains!"))?
+            } else {
+                bail!(
+                    "Invalid domain passed: {:?}. Please provide a valid domain name (e.g., 'com.example.app'), or use the fuzzy picker by omitting both domain and key arguments.",
+                    input_domain
+                )
+            };
+
+            let val = if let Some(key) = sub_m.get_one::<String>("key").map(String::as_str) {
+                Preferences::read(domain, key)?
+            } else {
+                Preferences::read_domain(domain)?
+            };
+
+            println!("{}", prettify(&val, 0));
+            Ok(())
+        }
+        "read-type" => {
+            let domain: Domain = parse_domain_or_path(sub_m, false)?;
+            let key = get_required_arg(sub_m, "key");
+            let val = Preferences::read(domain, key)?;
+
+            println!("Type is {}", val.get_type());
+            Ok(())
+        }
+        "delete" => {
+            let key = sub_m.get_one::<String>("key").map(String::as_str);
             let domain: Domain = parse_domain_or_path(sub_m, false)?;
 
-            match cmd {
-                "read" => {
-                    let val = if let Some(key) = sub_m.get_one::<String>("key").map(String::as_str)
-                    {
-                        Preferences::read(domain, key)?
-                    } else {
-                        Preferences::read_domain(domain)?
-                    };
-
-                    println!("{}", prettify(&val, 0));
-                    Ok(())
-                }
-                "read-type" => {
-                    let key = get_required_arg(sub_m, "key");
-                    let val = Preferences::read(domain, key)?;
-                    println!("Type is {}", val.get_type());
-                    Ok(())
-                }
-                "delete" => {
-                    let key = sub_m.get_one::<String>("key").map(String::as_str);
-
-                    if let Some(key) = key {
-                        Preferences::delete(domain, key)
-                    } else {
-                        Preferences::delete_domain(domain)
-                    }
-                }
-                "rename" => {
-                    let old_key = get_required_arg(sub_m, "old_key");
-                    let new_key = get_required_arg(sub_m, "new_key");
-                    print_result(Preferences::rename(domain, old_key, new_key));
-                    Ok(())
-                }
-                "import" => {
-                    let path = get_required_arg(sub_m, "path");
-                    print_result(Preferences::import(domain, path));
-                    Ok(())
-                }
-                "export" => {
-                    let path = get_required_arg(sub_m, "path");
-                    print_result(Preferences::export(domain, path));
-                    Ok(())
-                }
-                _ => unreachable!(),
+            if let Some(key) = key {
+                Preferences::delete(domain, key)
+            } else {
+                Preferences::delete_domain(domain)
             }
         }
+        "rename" => {
+            let domain: Domain = parse_domain_or_path(sub_m, false)?;
+            let old_key = get_required_arg(sub_m, "old_key");
+            let new_key = get_required_arg(sub_m, "new_key");
+
+            print_result(Preferences::rename(domain, old_key, new_key));
+            Ok(())
+        }
+        "import" => {
+            let domain: Domain = parse_domain_or_path(sub_m, false)?;
+            let path = get_required_arg(sub_m, "path");
+
+            print_result(Preferences::import(domain, path));
+            Ok(())
+        }
+        "export" => {
+            let domain: Domain = parse_domain_or_path(sub_m, false)?;
+            let path = get_required_arg(sub_m, "path");
+
+            print_result(Preferences::export(domain, path));
+            Ok(())
+        }
+        _ => unreachable!(),
     }
 }
 
