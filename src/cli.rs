@@ -17,7 +17,7 @@ pub fn build_cli() -> Command {
 
     let domain = |req| {
         let mut a = Arg::new("domain")
-            .help("Domain or plist path")
+            .help("Domain (e.g. com.example.app / -g / NSGlobalDomain) or a system-recognized plist path")
             .index(1)
             .allow_hyphen_values(true);
         if req {
@@ -73,6 +73,8 @@ pub fn build_cli() -> Command {
                         .short('i')
                         .long("int")
                         .num_args(1)
+                        .value_name("VALUE")
+                        .help("Write an integer value")
                         .conflicts_with_all(["float", "bool", "string"]),
                 )
                 .arg(
@@ -80,6 +82,8 @@ pub fn build_cli() -> Command {
                         .short('f')
                         .long("float")
                         .num_args(1)
+                        .value_name("VALUE")
+                        .help("Write a float value")
                         .conflicts_with_all(["int", "bool", "string"]),
                 )
                 .arg(
@@ -87,6 +91,8 @@ pub fn build_cli() -> Command {
                         .short('b')
                         .long("bool")
                         .num_args(1)
+                        .value_name("VALUE")
+                        .help("Write a boolean value (true/false/1/0/yes/no)")
                         .conflicts_with_all(["int", "float", "string"]),
                 )
                 .arg(
@@ -94,6 +100,7 @@ pub fn build_cli() -> Command {
                         .short('s')
                         .long("string")
                         .num_args(1)
+                        .value_name("VALUE")
                         .conflicts_with_all(["int", "float", "bool"]),
                 ),
         )
@@ -107,14 +114,24 @@ pub fn build_cli() -> Command {
             Command::new("rename")
                 .about("Rename key")
                 .arg(domain(true))
-                .arg(Arg::new("old_key").required(true).index(2))
-                .arg(Arg::new("new_key").required(true).index(3)),
+                .arg(
+                    Arg::new("old_key")
+                        .help("Old/original key name")
+                        .required(true)
+                        .index(2),
+                )
+                .arg(
+                    Arg::new("new_key")
+                        .help("New key name")
+                        .required(true)
+                        .index(3),
+                ),
         )
         .subcommand(
             Command::new("import")
                 .about("Import plist")
                 .arg(domain(true))
-                .arg(path.clone()),
+                .arg(&path),
         )
         .subcommand(
             Command::new("export")
@@ -125,16 +142,19 @@ pub fn build_cli() -> Command {
         .subcommand(
             Command::new("domains").about("List domains").arg(
                 Arg::new("no-fuzzy")
-                    .short('N')
+                    .short('n')
                     .long("no-fuzzy")
-                    .help("Disable fuzzy-picker.")
+                    .help("Disable fuzzy-picker")
                     .action(ArgAction::SetTrue),
             ),
         )
         .subcommand(
-            Command::new("find")
-                .about("Search all domains")
-                .arg(Arg::new("word").required(true).index(1)),
+            Command::new("find").about("Search all domains").arg(
+                Arg::new("word")
+                    .help("Word to search for (case-insensitive)")
+                    .required(true)
+                    .index(1),
+            ),
         )
 }
 

@@ -141,7 +141,7 @@ fn pick_one(prompt: &str, items: &[String]) -> Option<String> {
         .case(CaseMatching::Smart)
         .multi(false)
         .build()
-        .unwrap();
+        .expect("Failed to build options for picker.");
 
     let out = Skim::run_with(&options, Some(skim_items));
 
@@ -150,11 +150,9 @@ fn pick_one(prompt: &str, items: &[String]) -> Option<String> {
         _ => return None,
     };
 
-    if out.selected_items.first().is_some() {
-        Some(out.selected_items.first().unwrap().output().to_string())
-    } else {
-        None
-    }
+    out.selected_items
+        .first()
+        .map(|item| item.output().to_string())
 }
 
 /// Function to handle subcommand runs.
@@ -252,9 +250,12 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
                 domains
                     .into_iter()
                     .find(|d| d.to_string() == chosen)
-                    .unwrap()
+                    .ok_or_else(|| anyhow!("Selected domain not found in available domains!"))?
             } else {
-                bail!("invalid domain passed.")
+                bail!(
+                    "Invalid domain passed: {:?}. Please provide a valid domain name (e.g., 'com.example.app'), or use the fuzzy picker by omitting both domain and key arguments.",
+                    input_domain
+                )
             };
 
             let val = if let Some(key) = sub_m.get_one::<String>("key").map(String::as_str) {
