@@ -103,7 +103,7 @@ fn parse_domain_or_path(sub_m: &ArgMatches, force: bool) -> Result<Domain> {
     }
 }
 
-/// Extract the proper PrefValue to be writtenf rom the passed typeflag.
+/// Extract the proper PrefValue to be writtem from the passed typeflag.
 ///
 /// This is primarily used in the write command for determining types.
 #[cfg(feature = "cli")]
@@ -115,9 +115,9 @@ fn extract_prefvalue_from_args(sub_m: &ArgMatches) -> Result<PrefValue> {
         Ok(PrefValue::Integer(val))
     } else if let Some(val) = sub_m.get_one::<String>("float") {
         let val = val
-            .parse::<i64>()
+            .parse::<f64>()
             .map_err(|e| anyhow!("Failed to parse int: {e}"))?;
-        Ok(PrefValue::Integer(val))
+        Ok(PrefValue::Float(val))
     } else if let Some(val) = sub_m.get_one::<String>("bool") {
         match val.to_lowercase().as_str() {
             "true" | "1" | "yes" => Ok(PrefValue::Boolean(true)),
