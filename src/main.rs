@@ -103,29 +103,40 @@ fn parse_domain_or_path(sub_m: &ArgMatches, force: bool) -> Result<Domain> {
     }
 }
 
-/// Returns a string representation of a preference value based on the typeflag passed.s
+/// Extract the proper PrefValue to be writtem from the passed typeflag.
+///
+/// This is primarily used in the write command for determining types.
 #[cfg(feature = "cli")]
-fn from_typeflag_str(type_flag: &str, s: &str) -> Result<PrefValue> {
-    match type_flag {
-        "int" => {
-            let val = s
-                .parse::<i64>()
-                .map_err(|e| anyhow!("Failed to parse int: {e}"))?;
-            Ok(PrefValue::Integer(val))
-        }
-        "float" => {
-            let val = s
-                .parse::<f64>()
-                .map_err(|e| anyhow!("Failed to parse float: {e}"))?;
-            Ok(PrefValue::Float(val))
-        }
-        "bool" => match s {
+fn extract_prefvalue_from_args(sub_m: &ArgMatches) -> Result<PrefValue> {
+    if let Some(val) = sub_m.get_one::<String>("int") {
+        let val = val
+            .parse::<i64>()
+            .map_err(|e| anyhow!("Failed to parse int: {e}"))?;
+        Ok(PrefValue::Integer(val))
+    } else if let Some(val) = sub_m.get_one::<String>("float") {
+        let val = val
+            .parse::<f64>()
+            .map_err(|e| anyhow!("Failed to parse int: {e}"))?;
+        Ok(PrefValue::Float(val))
+    } else if let Some(val) = sub_m.get_one::<String>("bool") {
+        match val.to_lowercase().as_str() {
             "true" | "1" | "yes" => Ok(PrefValue::Boolean(true)),
             "false" | "0" | "no" => Ok(PrefValue::Boolean(false)),
-            _ => bail!("Invalid boolean value (use true/false or 1/0)"),
-        },
-        "string" => Ok(PrefValue::String(s.to_string())),
-        other => bail!("Unsupported type: {other}"),
+            _ => bail!("Invalid boolean value (use true/false, yes/no or 1/0)"),
+        }
+    } else if let Some(val) = sub_m.get_many::<String>("array") {
+        let val: Vec<PrefValue> = val
+            .into_iter()
+            .map(|f| PrefValue::String(f.to_string()))
+            .collect();
+
+        Ok(PrefValue::Array(val))
+    } else if let Some(val) = sub_m.get_one::<String>("string") {
+        Ok(PrefValue::String(val.to_string()))
+    } else {
+        bail!(
+            "You must specify one of --int, --float, --bool, --array or --string for the value type."
+        )
     }
 }
 
@@ -212,22 +223,7 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
 
             let key = get_required_arg(sub_m, "key");
 
-            // Detect which type flag was used and get the value.
-            let (type_flag, value_str) = if let Some(val) = sub_m.get_one::<String>("int") {
-                ("int", val)
-            } else if let Some(val) = sub_m.get_one::<String>("float") {
-                ("float", val)
-            } else if let Some(val) = sub_m.get_one::<String>("bool") {
-                ("bool", val)
-            } else if let Some(val) = sub_m.get_one::<String>("string") {
-                ("string", val)
-            } else {
-                bail!(
-                    "You must specify one of --int, --float, --bool, or --string for the value type."
-                )
-            };
-
-            let value = from_typeflag_str(type_flag, value_str)?;
+            let value = extract_prefvalue_from_args(sub_m)?;
             print_result(Preferences::write(domain, key, value));
             Ok(())
         }
@@ -279,11 +275,14 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
             let key = sub_m.get_one::<String>("key").map(String::as_str);
             let domain: Domain = parse_domain_or_path(sub_m, false)?;
 
-            if let Some(key) = key {
+            let result = if let Some(key) = key {
                 Preferences::delete(domain, key)
             } else {
                 Preferences::delete_domain(domain)
-            }
+            };
+
+            print_result(result);
+            Ok(())
         }
         "rename" => {
             let domain: Domain = parse_domain_or_path(sub_m, false)?;

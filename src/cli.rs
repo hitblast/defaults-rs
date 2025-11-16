@@ -75,7 +75,7 @@ pub fn build_cli() -> Command {
                         .num_args(1)
                         .value_name("VALUE")
                         .help("Write an integer value")
-                        .conflicts_with_all(["float", "bool", "string"]),
+                        .conflicts_with_all(["float", "bool", "string", "array"]),
                 )
                 .arg(
                     Arg::new("float")
@@ -84,7 +84,7 @@ pub fn build_cli() -> Command {
                         .num_args(1)
                         .value_name("VALUE")
                         .help("Write a float value")
-                        .conflicts_with_all(["int", "bool", "string"]),
+                        .conflicts_with_all(["int", "bool", "string", "array"]),
                 )
                 .arg(
                     Arg::new("bool")
@@ -93,7 +93,7 @@ pub fn build_cli() -> Command {
                         .num_args(1)
                         .value_name("VALUE")
                         .help("Write a boolean value (true/false/1/0/yes/no)")
-                        .conflicts_with_all(["int", "float", "string"]),
+                        .conflicts_with_all(["int", "float", "string", "array"]),
                 )
                 .arg(
                     Arg::new("string")
@@ -102,7 +102,16 @@ pub fn build_cli() -> Command {
                         .num_args(1)
                         .value_name("VALUE")
                         .help("Write a string value")
-                        .conflicts_with_all(["int", "float", "bool"]),
+                        .conflicts_with_all(["int", "float", "bool", "array"]),
+                )
+                .arg(
+                    Arg::new("array")
+                        .short('a')
+                        .long("array")
+                        .value_name("VALUE")
+                        .num_args(1..)
+                        .help("Write an array value")
+                        .conflicts_with_all(["int", "float", "bool", "string"]),
                 ),
         )
         .subcommand(
