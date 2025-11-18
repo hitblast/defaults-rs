@@ -63,7 +63,7 @@ jobs:
           files: ${{ env.FILE_NAME }}
 
   publish:
-    needs: [build-arm64, create-release]
+    needs: [build-arm64]
     runs-on: macos-latest
 
     env:
