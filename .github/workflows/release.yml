@@ -2,8 +2,9 @@ name: Release Builds
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,6 +20,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref_name }}
+          body_path: RELEASE.md
           release_name: ${{ github.ref_name }}
           draft: false
           prerelease: false
@@ -70,13 +72,11 @@ jobs:
           cp README.md release/
           cd release && zip -r ../${{ env.FILE_NAME }} bin man README.md LICENSE && cd ..
 
-      - name: Upload binary to release
-        uses: svenstaro/upload-release-action@v2
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ env.FILE_NAME }}
-          tag: ${{ github.ref }}
-          overwrite: true
+          files: ${{ env.FILE_NAME }}
 
   publish:
     needs: [build-arm64, create-release]
