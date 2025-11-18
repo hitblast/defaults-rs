@@ -1,6 +1,6 @@
 [package]
 name = "defaults-rs"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 authors = ["Machlit"]
 description = "Open-source interface to a user's defaults on macOS"
@@ -15,7 +15,7 @@ name = "drs"
 path = "src/main.rs"
 
 [dependencies]
-plist = "1.8"
+plist = "=1.7.4"
 core-foundation = "0.10"
 core-foundation-sys = "0.8"
 anyhow = "1.0.100"
