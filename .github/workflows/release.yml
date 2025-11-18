@@ -75,6 +75,7 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: RELEASE.md
           files: ${{ env.FILE_NAME }}
 
   publish:
