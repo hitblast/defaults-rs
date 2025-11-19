@@ -1,3 +1,4 @@
 ## ✨
 
-- This release attempts to fix one of the bugs associated with some type changes in Rust v1.91, which fails to build the `plist` crate. defaults-rs depends on this crate for the import and export functionalities. This fix downgrades the version used from `v1.8.0` to `v1.7.4` which seems to work, for now.
+- This release stabilizes all of the internal APIs so that it's mature for a v1 release (yes, we're getting one right now!).
+- Removed the batch functions since more maturity in the concurrency part of the code is still needed. CoreFoundation bindings aren't by-default concurrent.
