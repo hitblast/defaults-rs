@@ -7,7 +7,7 @@ use crate::PrefValue;
 pub enum Domain {
     /// A user domain, e.g., "com.apple.finder"
     User(String),
-    /// The global preferences domain / NSGlobalDomain (".GlobalPreferences")
+    /// The global preferences domain / NSGlobalDomain / .GlobalPreferences
     Global,
 }
 

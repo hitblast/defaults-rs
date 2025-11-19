@@ -12,7 +12,7 @@ pub mod types;
 
 use anyhow::{Context, Result, bail};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     fs::{self, File},
     io::Cursor,
     path::PathBuf,
@@ -32,7 +32,7 @@ use crate::core::foundation;
 pub struct Preferences;
 
 impl Preferences {
-    /// List all available domains in ~/Library/Preferences.
+    /// List all available domains.
     pub fn list_domains() -> Result<Vec<Domain>> {
         let list = foundation::list_domains()?;
 
@@ -205,100 +205,6 @@ impl Preferences {
         plist
             .to_writer_binary(file)
             .context("failed to export CF domain to plist")?;
-
-        Ok(())
-    }
-
-    /// Batch-write multiple key–value pairs for domains concurrently.
-    ///
-    /// # Concurrency & Grouping
-    /// - The input is a vector of tuples `(Domain, String, PrefValue)`.
-    /// - All write requests are grouped by domain.
-    ///
-    /// # Behavior
-    /// - Only the designated keys are updated in each plist; the entire domain is not replaced.
-    /// - For CoreFoundation domains, each key is written individually.
-    ///
-    /// # Errors
-    /// - If any write fails, the operation returns an error.
-    pub fn write_batch(batch: Vec<(Domain, String, PrefValue)>) -> Result<()> {
-        let mut groups: HashMap<Domain, Vec<(String, PrefValue)>> = HashMap::new();
-
-        // Group write requests by domain.
-        for (domain, key, value) in batch {
-            groups.entry(domain).or_default().push((key, value));
-        }
-
-        for (domain, writes) in groups {
-            let cf_name = &domain.get_cf_name();
-
-            for (key, value) in writes {
-                foundation::write_pref(cf_name, &key, &value)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Batch-read multiple keys for domains concurrently.
-    ///
-    /// # Concurrency & Grouping
-    /// - The input is a vector of tuples `(Domain, String)`.
-    /// - Requests are grouped by domain.
-    ///
-    /// # Behavior
-    /// - The result is a vector of tuples `(Domain, String, ReadResult)`.
-    ///
-    /// # Errors
-    /// - If any read fails (e.g., key not found), the operation returns an error.
-    pub fn read_batch(batch: Vec<(Domain, String)>) -> Result<Vec<(Domain, String, PrefValue)>> {
-        let mut groups: HashMap<Domain, Vec<String>> = HashMap::new();
-
-        // group requests by domain
-        for (domain, key) in batch {
-            groups.entry(domain).or_default().push(key);
-        }
-
-        let mut results = Vec::new();
-
-        for (domain, keys) in groups {
-            let cf_name = &domain.get_cf_name();
-
-            for k in keys {
-                let pref_val = foundation::read_pref(cf_name, &k)?;
-                results.push((domain.clone(), k.clone(), pref_val));
-            }
-        }
-
-        Ok(results)
-    }
-
-    /// Batch-delete multiple keys for domains concurrently.
-    ///
-    /// # Concurrency & Grouping
-    /// - The input is a vector of tuples `(Domain, String)`.
-    /// - Requests are grouped by domain.
-    ///
-    /// # Behavior
-    /// - Only the specified keys are removed from the domain.
-    ///
-    /// # Errors
-    /// - If any deletion fails (e.g., key not found), the operation returns an error.
-    pub fn delete_batch(batch: Vec<(Domain, String)>) -> Result<()> {
-        let mut groups: HashMap<Domain, Vec<String>> = HashMap::new();
-
-        // group requests by domain
-        for (domain, key) in batch {
-            groups.entry(domain).or_default().push(key);
-        }
-
-        for (domain, keys) in groups {
-            let cf_name = &domain.get_cf_name();
-
-            for k in keys {
-                foundation::delete_key(cf_name, &k)?
-            }
-        }
 
         Ok(())
     }
