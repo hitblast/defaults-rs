@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-arm64:
+  ci:
     runs-on: macos-latest
 
     env:
@@ -56,20 +56,19 @@ jobs:
           cp README.md release/
           cd release && zip -r ../${{ env.FILE_NAME }} bin man README.md LICENSE && cd ..
 
+      - name: Set release body
+        id: release_body
+        run: |
+          body=$(cat RELEASE.md)
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$body" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
+          body: ${{ steps.release_body.outputs.body }}
           files: ${{ env.FILE_NAME }}
-
-  publish:
-    needs: [build-arm64]
-    runs-on: macos-latest
-
-    env:
-      CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
-
-    steps:
-      - uses: actions/checkout@v4
 
       - name: Prepare Crates.io README
         run: sed -i '' '/^>/d' README.md
