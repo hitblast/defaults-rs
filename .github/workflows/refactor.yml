@@ -31,7 +31,10 @@ jobs:
           override: true
           components: clippy, rustfmt
 
-      - name: Run sccache-cache
+      - name: Run rust-cache action
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run sccache-cache action
         uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: sccache stats
