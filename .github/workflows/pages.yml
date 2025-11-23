@@ -20,6 +20,12 @@ jobs:
 
     runs-on: macos-latest
 
+    env:
+      MACOSX_DEPLOYMENT_TARGET: 11
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_CACHE_SIZE: 2G
+      RUSTC_WRAPPER: "sccache"
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1
@@ -28,17 +34,9 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Cache Cargo registry and build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
+      - uses: Swatinem/rust-cache@v2
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - run: sccache --show-stats || true
       - uses: actions/configure-pages@v5
 
       - name: Copy docs to /docs folder
@@ -54,11 +52,10 @@ jobs:
           # Redirect root index to crate doc
           echo '<meta http-equiv="refresh" content="0; url=defaults_rs/index.html">' > docs/index.html
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: "docs"
 
       - name: Deploy to GitHub Pages
-        id: deployment
         uses: actions/deploy-pages@v4
+        id: deployment

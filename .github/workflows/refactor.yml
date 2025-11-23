@@ -21,6 +21,12 @@ jobs:
   tests:
     runs-on: macos-latest
 
+    env:
+      MACOSX_DEPLOYMENT_TARGET: 11
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_CACHE_SIZE: 2G
+      RUSTC_WRAPPER: "sccache"
+
     steps:
       - uses: actions/checkout@v5
 
@@ -31,17 +37,8 @@ jobs:
           override: true
           components: clippy, rustfmt
 
-      - name: Run rust-cache action
-        uses: Swatinem/rust-cache@v2
-
-      - name: Run sccache-cache action
-        uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: sccache stats
-        run: sccache --show-stats || true
-
-      - name: Run Clippy
-        run: cargo clippy --all-targets --no-deps -v -- -D warnings
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - uses: Swatinem/rust-cache@v2
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - run: sccache --show-stats || true
+      - run: cargo clippy --all-targets --no-deps -v -- -D warnings
+      - run: cargo fmt --all -- --check
