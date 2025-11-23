@@ -28,24 +28,11 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
+      - uses: Swatinem/rust-cache@v2
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - run: sccache --show-stats || true
 
-      - name: sccache stats
-        run: sccache --show-stats || true
-
-      - name: Cache Cargo registry and build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Build release artifact
-        run: cargo build --release --verbose --locked --features cli
+      - run: cargo build --release --verbose --locked --features cli
 
       - name: Package release
         run: |
@@ -64,14 +51,12 @@ jobs:
           echo "$body" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           body: ${{ steps.release_body.outputs.body }}
           files: ${{ env.FILE_NAME }}
 
-      - name: Prepare Crates.io README
-        run: sed -i '' '/^>/d' README.md
+      - run: sed -i '' '/^>/d' README.md
 
       - name: Publish to crates.io
         env:
