@@ -12,10 +12,7 @@ use anyhow::{anyhow, bail};
 #[cfg(feature = "cli")]
 use clap::ArgMatches;
 #[cfg(feature = "cli")]
-use defaults_rs::{
-    Domain, PrefValue, Preferences, build_cli,
-    cli::{get_required_arg, print_result},
-};
+use defaults_rs::{Domain, PrefValue, Preferences, build_cli};
 #[cfg(feature = "cli")]
 use skim::prelude::*;
 #[cfg(feature = "cli")]
@@ -39,6 +36,8 @@ fn main() {
     if let Err(e) = result {
         eprintln!("\nError: {e}");
         std::process::exit(1);
+    } else {
+        println!("OK")
     }
 }
 
@@ -140,9 +139,21 @@ fn extract_prefvalue_from_args(sub_m: &ArgMatches) -> Result<PrefValue> {
     }
 }
 
+/// Returns a required argument from the CLI.
+#[cfg(feature = "cli")]
+pub fn get_required_arg<'a>(sub_m: &'a clap::ArgMatches, name: &str) -> &'a str {
+    sub_m
+        .get_one::<String>(name)
+        .map(String::as_str)
+        .unwrap_or_else(|| {
+            eprintln!("Error: {name} required");
+            std::process::exit(1);
+        })
+}
+
 /// Fuzzy-picking helper for the CLI.
 #[cfg(feature = "cli")]
-fn pick_one(prompt: &str, items: &[String]) -> Option<String> {
+fn pick_one(prompt: &str, items: &[String]) -> Result<Option<String>> {
     let item_reader = SkimItemReader::default();
     let skim_items = item_reader.of_bufread(Cursor::new(items.join("\n")));
 
@@ -152,18 +163,19 @@ fn pick_one(prompt: &str, items: &[String]) -> Option<String> {
         .case(CaseMatching::Smart)
         .multi(false)
         .build()
-        .expect("Failed to build options for picker.");
+        .context("Failed to build fuzzy-picker options; internal error in pick_one().")?;
 
     let out = Skim::run_with(&options, Some(skim_items));
 
     let out = match out {
         Some(o) if !o.is_abort => o,
-        _ => return None,
+        _ => return Ok(None),
     };
 
-    out.selected_items
+    Ok(out
+        .selected_items
         .first()
-        .map(|item| item.output().to_string())
+        .map(|item| item.output().to_string()))
 }
 
 /// Function to handle subcommand runs.
@@ -182,7 +194,7 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
                 let picker = pick_one(
                     "Viewing list of domains. Use arrow keys to navigate: ",
                     &domains_str,
-                );
+                )?;
 
                 if let Some(picked_domain) = picker {
                     println!("Domain: {picked_domain} (is {})", {
@@ -224,8 +236,7 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
             let key = get_required_arg(sub_m, "key");
 
             let value = extract_prefvalue_from_args(sub_m)?;
-            print_result(Preferences::write(domain, key, value));
-            Ok(())
+            Preferences::write(domain, key, value)
         }
         "read" => {
             let input_domain = sub_m.get_one::<String>("domain");
@@ -240,13 +251,16 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
                 let chosen = pick_one(
                     "Select a proper domain to read. Use arrow keys to navigate: ",
                     &domains_str,
-                )
-                .context("domain argument is required!")?;
+                )?;
 
-                domains
-                    .into_iter()
-                    .find(|d| d.to_string() == chosen)
-                    .ok_or_else(|| anyhow!("Selected domain not found in available domains!"))?
+                if let Some(chosen) = chosen {
+                    domains
+                        .into_iter()
+                        .find(|d| d.to_string() == chosen)
+                        .context("Unexpected domain mismatch here.")?
+                } else {
+                    bail!("No domain selected.")
+                }
             } else {
                 bail!(
                     "Invalid domain passed: {:?}. Please provide a valid domain name (e.g., 'com.example.app'), or use the fuzzy picker by omitting both domain and key arguments.",
@@ -275,38 +289,32 @@ fn handle_subcommand(cmd: &str, sub_m: &ArgMatches) -> Result<()> {
             let key = sub_m.get_one::<String>("key").map(String::as_str);
             let domain: Domain = parse_domain_or_path(sub_m, false)?;
 
-            let result = if let Some(key) = key {
+            if let Some(key) = key {
                 Preferences::delete(domain, key)
             } else {
                 Preferences::delete_domain(domain)
-            };
-
-            print_result(result);
-            Ok(())
+            }
         }
         "rename" => {
             let domain: Domain = parse_domain_or_path(sub_m, false)?;
             let old_key = get_required_arg(sub_m, "old_key");
             let new_key = get_required_arg(sub_m, "new_key");
 
-            print_result(Preferences::rename(domain, old_key, new_key));
-            Ok(())
+            Preferences::rename(domain, old_key, new_key)
         }
         "import" => {
             let domain: Domain = parse_domain_or_path(sub_m, false)?;
             let path = get_required_arg(sub_m, "path");
 
-            print_result(Preferences::import(domain, path));
-            Ok(())
+            Preferences::import(domain, path)
         }
         "export" => {
             let domain: Domain = parse_domain_or_path(sub_m, false)?;
             let path = get_required_arg(sub_m, "path");
 
-            print_result(Preferences::export(domain, path));
-            Ok(())
+            Preferences::export(domain, path)
         }
-        _ => unreachable!(),
+        _ => bail!("Not a proper subcommand."),
     }
 }
 

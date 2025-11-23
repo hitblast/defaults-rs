@@ -12,7 +12,7 @@ pub mod types;
 
 use anyhow::{Context, Result, bail};
 use std::{
-    collections::BTreeMap,
+    collections::HashMap,
     fs::{self, File},
     io::Cursor,
     path::PathBuf,
@@ -41,9 +41,10 @@ impl Preferences {
     }
 
     /// Search all domains for keys or values containing the given word (case-insensitive).
-    pub fn find(word: &str) -> Result<BTreeMap<String, Vec<FindMatch>>> {
+    pub fn find(word: &str) -> Result<HashMap<Domain, Vec<FindMatch>>> {
         let word_lower = word.to_lowercase();
-        let mut results: BTreeMap<String, Vec<FindMatch>> = BTreeMap::new();
+        let mut results: std::collections::HashMap<Domain, Vec<FindMatch>> =
+            std::collections::HashMap::new();
 
         let domains: Vec<Domain> = Self::list_domains()?
             .into_iter()
@@ -56,7 +57,7 @@ impl Preferences {
 
             Self::find_in_value(&loaded, &word_lower, String::new(), &mut matches);
             if !matches.is_empty() {
-                results.insert(domain.to_string(), matches);
+                results.insert(domain, matches);
             }
         }
         Ok(results)
@@ -183,7 +184,7 @@ impl Preferences {
 
         let cf_name = &domain.get_cf_name();
         for (k, v) in dict {
-            let pv = plist_to_prefvalue(&v);
+            let pv = plist_to_prefvalue(&v)?;
             foundation::write_pref(cf_name, &k, &pv)?;
         }
         Ok(())

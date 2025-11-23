@@ -1,36 +1,51 @@
+use anyhow::{Context, Result, bail};
 use plist::{Uid, Value};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use crate::PrefValue;
 
 // Apple epoch is Jan 1, 2001, which is 978307200 seconds after UNIX_EPOCH
 static APPLE_EPOCH_UNIX: u64 = 978307200;
 
-pub(crate) fn plist_to_prefvalue(val: &Value) -> PrefValue {
-    match val {
-        Value::String(s) => PrefValue::String(s.clone()),
+pub(crate) fn plist_to_prefvalue(val: &Value) -> Result<PrefValue> {
+    let val = match val {
+        Value::String(s) => PrefValue::String(s.to_owned()),
         Value::Integer(i) => PrefValue::Integer(i.as_signed().unwrap_or(0)),
         Value::Real(f) => PrefValue::Float(*f),
         Value::Boolean(b) => PrefValue::Boolean(*b),
-        Value::Array(arr) => PrefValue::Array(arr.iter().map(plist_to_prefvalue).collect()),
-        Value::Dictionary(dict) => PrefValue::Dictionary(
-            dict.iter()
-                .map(|(k, v)| (k.clone(), plist_to_prefvalue(v)))
-                .collect(),
-        ),
-        Value::Data(data) => PrefValue::Data(data.clone()),
+        Value::Array(arr) => {
+            let mut result = Vec::new();
+            for f in arr.iter() {
+                result.push(plist_to_prefvalue(f)?);
+            }
+            PrefValue::Array(result)
+        }
+        Value::Dictionary(dict) => {
+            let mut result = HashMap::new();
+
+            for (k, v) in dict.iter() {
+                result.insert(k.to_owned(), plist_to_prefvalue(v)?);
+            }
+            PrefValue::Dictionary(result)
+        }
+        Value::Data(data) => PrefValue::Data(data.to_owned()),
         Value::Date(date) => {
             let system_time: SystemTime = date.to_owned().into();
             let duration_since_unix = system_time
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .context("Failed to calculate duration since UNIX_EPOCH when converting.")?
                 .as_secs_f64();
             let seconds_since_apple_epoch = duration_since_unix - APPLE_EPOCH_UNIX as f64;
             PrefValue::Date(seconds_since_apple_epoch)
         }
         Value::Uid(uid) => PrefValue::Uid(uid.get()),
-        _ => unreachable!(),
-    }
+        _ => bail!("Cannot reach this conversion for Value type."),
+    };
+
+    Ok(val)
 }
 
 pub(crate) fn prefvalue_to_plist(val: &PrefValue) -> Value {
