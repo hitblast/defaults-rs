@@ -1,4 +1,5 @@
 ## ✨
 
-- This release stabilizes all of the internal APIs so that it's mature for a v1 release (yes, we're getting one right now!).
-- Removed the batch functions since more maturity in the concurrency part of the code is still needed. CoreFoundation bindings aren't by-default concurrent.
+- `Preferences::find` now returns a hashmap of `Domain` as keys instead of a binary tree map with `String` keys for easier `Domain` lookup.
+- `clippy` lints have been made tighter to avoid unexpected panics in code, effectively making them zero in the codebase alone.
+- Enhanced graceful error handling across the core.

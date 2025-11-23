@@ -30,7 +30,7 @@ fn main() {
             Ok(()) => Ok(()),
             Err(e) => Err(e),
         },
-        None => unreachable!("Subcommand required"),
+        None => Err(anyhow!("Subcommand required")),
     };
 
     if let Err(e) = result {
