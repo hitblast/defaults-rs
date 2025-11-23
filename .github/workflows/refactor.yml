@@ -37,17 +37,6 @@ jobs:
       - name: sccache stats
         run: sccache --show-stats || true
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') || hashFiles('*/Cargo.lock') || 'no-lock' }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
       - name: Run Clippy
         run: cargo clippy --all-targets --no-deps -v -- -D warnings
 
