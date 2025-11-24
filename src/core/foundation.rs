@@ -8,7 +8,7 @@
 //! - Write key
 //! - Delete key / whole domain
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use std::collections::HashMap;
 
 use core_foundation::{
@@ -52,8 +52,6 @@ pub(crate) fn list_domains() -> Result<Vec<String>> {
         Ok(out)
     }
 }
-
-use anyhow::bail;
 
 /// Read a single key as PrefValue.
 pub(crate) fn read_pref(domain: &str, key: &str) -> Result<PrefValue> {

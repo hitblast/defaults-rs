@@ -147,7 +147,11 @@ system preferences in the [cutler](https://github.com/machlit/cutler) project.
 
 ## Caveats
 
-Since this is a completely open-source attempt to replicate the capabilities of `defaults` (which is a proprietary software), there will be certain limitations:
+Some temporary limitations include:
+
+- `.plist` files for applications (`Info.plist` specifically) cannot be read by this tool as of now, although this is planned for the next release.
+
+And since this is a completely open-source attempt to replicate the capabilities of `defaults` (which is a proprietary software), there will be certain limitations:
 
 - Domain-reading might result in showing slightly "less" output in very rare cases where parts of the domain is overridden by the system (e.g. `com.apple.Safari`). defaults-rs attempts to read in the `Current User` + `Any Host` space for the maximum achievable domain index. This is not a threat to I/O operations so it's not really much of a caveat.
 
