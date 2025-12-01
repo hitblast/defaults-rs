@@ -60,13 +60,7 @@ fn parse_domain_or_path(sub_m: &ArgMatches, force: bool) -> Result<Domain> {
             "{}/Library/Preferences/",
             home_dir.to_string_lossy()
         )) || path.starts_with("/Library/Preferences/")
-            || path.starts_with("/System/Library/Preferences/")
-            || path
-                == Path::new(&format!(
-                    "{}/Library/Preferences/.GlobalPreferences.plist",
-                    home_dir.to_string_lossy()
-                ))
-            || path == Path::new("/Library/Preferences/.GlobalPreferences.plist"))
+            || path.starts_with("/System/Library/Preferences/"))
     {
         domain = path
             .file_stem()
