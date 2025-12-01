@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use clap_mangen::Man;
-use defaults_rs::build_cli;
+use defaults_rs::cli::build_cli;
 use std::fs::{self, File};
 use std::path::PathBuf;
 
