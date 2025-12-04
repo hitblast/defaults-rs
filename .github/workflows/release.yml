@@ -37,7 +37,7 @@ jobs:
       - name: Package release
         run: |
           mkdir -p release/bin release/man/man1
-          cp target/release/drs release/bin/
+          cp target/aarch64-apple-darwin/release/drs release/bin/
           cp man/man1/drs.1 release/man/man1/
           cp LICENSE release/
           cp README.md release/
