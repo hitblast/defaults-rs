@@ -1,5 +1,5 @@
 ## ✨
 
-- `Preferences::find` now returns a hashmap of `Domain` as keys instead of a binary tree map with `String` keys for easier `Domain` lookup.
-- `clippy` lints have been made tighter to avoid unexpected panics in code, effectively making them zero in the codebase alone.
-- Enhanced graceful error handling across the core.
+- The `Preferences::list_domains()` function now returns a `HashSet` of `Domain` enum variants for faster lookups.
+- The CLI doesn't print the "OK" status in favor of better external data piping.
+- Boolean flags are now printed as boolean flags (happy divergence from the original tool).

@@ -40,13 +40,7 @@ pub(crate) fn prettify(val: &PrefValue, indent: usize) -> String {
             out
         }
         PrefValue::String(s) => quote_string(s),
-        PrefValue::Boolean(b) => {
-            if *b {
-                "1".to_string()
-            } else {
-                "0".to_string()
-            }
-        }
+        PrefValue::Boolean(b) => b.to_string(),
         PrefValue::Data(data) => {
             let mut s = data
                 .iter()
