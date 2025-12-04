@@ -211,7 +211,7 @@ fn parse_domain_or_path(sub_m: &ArgMatches, force: bool) -> Result<Domain> {
 
     // domain check
     match domain.strip_suffix(".plist").unwrap_or(&domain) {
-        "-g" | "NSGlobalDomain" | "-globalDomain" => Ok(Domain::Global),
+        "-g" | "NSGlobalDomain" | "-globalDomain" | ".GlobalPreferences" => Ok(Domain::Global),
         other => {
             if other.contains("..")
                 || other.contains('/')
