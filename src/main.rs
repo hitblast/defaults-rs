@@ -21,8 +21,6 @@ fn main() {
     if let Err(e) = result {
         eprintln!("\nError: {e}");
         std::process::exit(1);
-    } else {
-        println!("OK")
     }
 }
 

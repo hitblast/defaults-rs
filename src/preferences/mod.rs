@@ -12,7 +12,7 @@ pub mod types;
 
 use anyhow::{Context, Result, bail};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io::Cursor,
     path::PathBuf,
@@ -33,10 +33,10 @@ pub struct Preferences;
 
 impl Preferences {
     /// List all available domains.
-    pub fn list_domains() -> Result<Vec<Domain>> {
+    pub fn list_domains() -> Result<HashSet<Domain>> {
         let list = foundation::list_domains()?;
 
-        let domains: Vec<Domain> = list.iter().map(|f| Domain::User(f.to_string())).collect();
+        let domains: HashSet<Domain> = list.iter().map(|f| Domain::User(f.to_string())).collect();
         Ok(domains)
     }
 
