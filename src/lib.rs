@@ -12,4 +12,4 @@ pub use preferences::types::{Domain, FindMatch};
 #[cfg(feature = "cli")]
 pub mod cli;
 #[cfg(feature = "cli")]
-pub use cli::build_cli;
+pub mod prettifier;

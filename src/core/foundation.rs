@@ -9,7 +9,7 @@
 //! - Delete key / whole domain
 
 use anyhow::{Result, bail};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use core_foundation::{
     base::{CFGetTypeID, TCFType},
@@ -32,23 +32,22 @@ use crate::core::{
 };
 
 /// List all preference application IDs (domains) for CurrentUser / AnyHost.
-pub(crate) fn list_domains() -> Result<Vec<String>> {
+pub(crate) fn list_domains() -> Result<HashSet<String>> {
     unsafe {
         let arr_ref =
             CFPreferencesCopyApplicationList(kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
         if arr_ref.is_null() {
-            return Ok(Vec::new());
+            bail!("Couldn't copy application list from CoreFoundation API.")
         }
         let len = CFArrayGetCount(arr_ref);
-        let mut out = Vec::with_capacity(len as usize);
+        let mut out = HashSet::with_capacity(len as usize);
         for i in 0..len {
             let val = CFArrayGetValueAtIndex(arr_ref, i);
             if !val.is_null() && CFGetTypeID(val as _) == CFStringGetTypeID() {
                 let s = CFString::wrap_under_get_rule(val as _);
-                out.push(s.to_string());
+                out.insert(s.to_string());
             }
         }
-        out.sort();
         Ok(out)
     }
 }
