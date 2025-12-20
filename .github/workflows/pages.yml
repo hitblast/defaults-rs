@@ -47,7 +47,7 @@ jobs:
           # Move
           rm -rf docs
           mkdir -p docs
-          cp -r target/doc/* docs/
+          cp -r target/aarch64-apple-darwin/doc/* docs/
 
           # Redirect root index to crate doc
           echo '<meta http-equiv="refresh" content="0; url=defaults_rs/index.html">' > docs/index.html
