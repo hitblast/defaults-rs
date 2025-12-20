@@ -15,7 +15,7 @@ jobs:
 
     env:
       MACOSX_DEPLOYMENT_TARGET: 11
-      FILE_NAME: drs-aarch64-apple-darwin.zip
+      FILE_NAME: drs-aarch64-apple-darwin.tar.gz
       SCCACHE_GHA_ENABLED: "true"
       SCCACHE_CACHE_SIZE: 2G
       RUSTC_WRAPPER: "sccache"
@@ -32,7 +32,7 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.9
       - run: sccache --show-stats || true
 
-      - run: cargo build --release --verbose --locked --features cli
+      - run: cargo build --release --quiet --locked --features cli
 
       - name: Package release
         run: |
@@ -41,7 +41,7 @@ jobs:
           cp man/man1/drs.1 release/man/man1/
           cp LICENSE release/
           cp README.md release/
-          cd release && zip -r ../${{ env.FILE_NAME }} bin man README.md LICENSE && cd ..
+          tar -C release -czf $FILE_NAME bin man README.md LICENSE
 
       - name: Set release body
         id: release_body
