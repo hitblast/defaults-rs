@@ -33,7 +33,7 @@ pub(crate) fn plist_to_prefvalue(val: &Value) -> Result<PrefValue> {
         }
         Value::Data(data) => PrefValue::Data(data.clone().into_boxed_slice()),
         Value::Date(date) => {
-            let system_time: SystemTime = date.clone().into();
+            let system_time: SystemTime = (*date).into();
             let duration_since_unix = system_time
                 .duration_since(UNIX_EPOCH)
                 .context("Failed to calculate duration since UNIX_EPOCH when converting.")?
