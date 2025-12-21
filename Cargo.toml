@@ -4,7 +4,6 @@ version = "1.2.1"
 edition = "2024"
 authors = ["Machlit"]
 description = "Open-source interface to a user's defaults on macOS"
-documentation = "https://machlit.github.io/defaults-rs"
 license = "MIT"
 repository = "https://github.com/machlit/defaults-rs"
 keywords = ["macos", "defaults", "cli", "preferences", "plist"]
