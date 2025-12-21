@@ -15,7 +15,7 @@ pub enum PrefValue {
     Boolean(bool),
     Array(Vec<PrefValue>),
     Dictionary(HashMap<String, PrefValue>),
-    Data(Vec<u8>),
+    Data(Box<[u8]>),
     Date(f64),
     Url(String),
     Uuid(String),
