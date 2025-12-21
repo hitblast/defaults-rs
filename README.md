@@ -135,7 +135,9 @@ In order to use the Rust API for defaults-rs, run this command in your project d
 $ cargo add defaults-rs --no-default-features
 ```
 
-Please refer to the [API reference](https://machlit.github.io/defaults-rs) for more information about all the available functions.
+### API Reference
+
+Check out the official docs.rs API reference for defaults-rs [here](https://docs.rs/defaults-rs/).
 
 For examples, check out: [examples/](https://github.com/machlit/defaults-rs/tree/master/examples)
 
